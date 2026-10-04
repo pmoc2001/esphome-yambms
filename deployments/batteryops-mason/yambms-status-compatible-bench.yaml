@@ -1,0 +1,12 @@
+# Isolated actual-data bench. Profile qualified for BMS16S200A-SP18B FW1.5.
+# Only FET status bit0x40 is non-blocking. No BMS protection is changed.
+packages:
+  real_data: !include yambms-live-data-bench.yaml
+
+seplos_parser:
+  - id: !extend seplos_v3
+    status_profile: v3_sp18b_fw15
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"REAL DATA CAN BENCH - SP18B FW1.5 status compatibility - enable resets OFF"};

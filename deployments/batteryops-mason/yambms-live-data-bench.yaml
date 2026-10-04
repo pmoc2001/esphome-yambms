@@ -1,0 +1,116 @@
+# Isolated spare Pi only. Actual RS485 measurements, zero synthetic packs.
+# Undocumented status still blocks both allowances. NOT a handover image.
+substitutions:
+  canbus_id: '1'
+  canbus_name: REAL DATA BENCH ONLY
+  canbus_node_id: canbus_live_bench
+  canbus_link_timer: 5s
+  yambms_name: YamBMS Real Data Bench
+
+packages:
+  shadow: !include yambms-shadow.yaml
+  can_policy: !include yam-packages/yambms/yambms_canbus.yaml
+
+canbus:
+  - platform: esp32_can
+    id: canbus_live_bench
+    tx_pin: GPIO15
+    rx_pin: GPIO16
+    can_id: 1
+    bit_rate: 500kbps
+
+switch:
+  - platform: template
+    id: live_bench_output_enabled
+    name: REAL DATA BENCH Enable
+    device_id: qualification
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+select:
+  - id: !extend canbus1_protocol
+    initial_option: Victron
+    restore_value: false
+  - id: !extend canbus1_bms_name
+    initial_option: YamBMS
+    restore_value: false
+
+binary_sensor:
+  - id: !extend bms1_can_be_combined
+    lambda: |-
+      if (!id(live_bench_output_enabled).state || !id(seplos_v3).metadata_ready()) return false;
+      const float derived[] = {
+        id(bms1_power).state, id(bms1_battery_soc).state,
+        id(bms1_battery_soh).state, id(bms1_battery_capacity_remaining).state,
+        id(bms1_charging_cycles).state, id(bms1_max_charge_current).state,
+        id(bms1_max_discharge_current).state, id(bms1_min_voltage_cell).state,
+        id(bms1_max_voltage_cell).state, id(bms1_min_temperature).state,
+        id(bms1_max_temperature).state, id(bms1_min_temperature_sensor).state,
+        id(bms1_max_temperature_sensor).state, id(bms1_cell_ovp).state,
+        id(bms1_cell_uvp).state, id(bms1_balance_trigger_voltage).state,
+        id(bms1_yambms_errors_bitmask).state
+      };
+      for (float v : derived) if (!std::isfinite(v)) return false;
+      return id(bms1_online_status).state && id(bms1_charging_allowed).has_state() &&
+        id(bms1_discharging_allowed).has_state() && id(bms1_equalizing).has_state() &&
+        id(bms1_max_charge_current).state >= 0 && id(bms1_max_discharge_current).state >= 0;
+  - platform: template
+    name: Metadata Ready
+    device_id: qualification
+    lambda: return id(seplos_v3).metadata_ready();
+
+sensor:
+  - id: !extend bms1_min_voltage_cell
+    internal: false
+    name: Lowest Cell Number
+    filters: []
+    update_interval: 1s
+    lambda: return id(seplos_v3).min_cell_number();
+  - id: !extend bms1_max_voltage_cell
+    internal: false
+    name: Highest Cell Number
+    filters: []
+    update_interval: 1s
+    lambda: return id(seplos_v3).max_cell_number();
+  - id: !extend bms1_yambms_errors_bitmask
+    internal: false
+    name: Adapter Data Alarm Mask
+    filters: []
+    update_interval: 1s
+  - id: !extend bms1_max_charge_current
+    filters: []
+    update_interval: 1s
+    lambda: return id(seplos_v3).safety_preview().charge_limit;
+  - id: !extend bms1_max_discharge_current
+    filters: []
+    update_interval: 1s
+    lambda: return id(seplos_v3).safety_preview().discharge_limit;
+  - id: !extend bms1_state_of_charge
+    internal: false
+  - id: !extend bms1_capacity_remaining_ah
+    internal: false
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"REAL DATA CAN BENCH - unknown status blocks control - enable resets OFF"};
+  - platform: template
+    name: CAN Controller Status
+    device_id: qualification
+    update_interval: 1s
+    lambda: |-
+      twai_status_info_t status{};
+      if (twai_get_status_info(&status) != ESP_OK) return {"unavailable"};
+      char result[192];
+      snprintf(result, sizeof(result),
+        "state=%d; TX errors=%lu; RX errors=%lu; bus errors=%lu; failed TX=%lu; queued TX=%lu",
+        status.state, static_cast<unsigned long>(status.tx_error_counter),
+        static_cast<unsigned long>(status.rx_error_counter),
+        static_cast<unsigned long>(status.bus_error_count),
+        static_cast<unsigned long>(status.tx_failed_count),
+        static_cast<unsigned long>(status.msgs_to_tx));
+      return {result};
+
+button:
+  - platform: restart
+    name: Restart Test Board
+    device_id: qualification

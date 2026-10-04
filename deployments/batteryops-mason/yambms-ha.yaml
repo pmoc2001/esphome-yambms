@@ -1,0 +1,34 @@
+# Monitoring transport only; the qualified operating policy is inherited intact.
+packages:
+  operating: !include yambms-operating.yaml
+
+api:
+  encryption:
+    key: !secret ha_api_key
+  reboot_timeout: 0s
+
+sensor:
+  - platform: template
+    name: Cell Spread
+    device_id: qualification
+    unit_of_measurement: mV
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: 3s
+    lambda: |-
+      if (!id(seplos_v3).metadata_ready()) return NAN;
+      return 1000.0f * (id(bms1_max_cell_voltage).state - id(bms1_min_cell_voltage).state);
+  - platform: template
+    name: Lowest Cell Number
+    device_id: qualification
+    accuracy_decimals: 0
+    update_interval: 3s
+    lambda: |-
+      return id(seplos_v3).metadata_ready() ? id(bms1_min_voltage_cell).state : NAN;
+  - platform: template
+    name: Highest Cell Number
+    device_id: qualification
+    accuracy_decimals: 0
+    update_interval: 3s
+    lambda: |-
+      return id(seplos_v3).metadata_ready() ? id(bms1_max_voltage_cell).state : NAN;

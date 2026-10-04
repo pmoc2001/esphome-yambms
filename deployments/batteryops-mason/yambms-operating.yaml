@@ -1,0 +1,55 @@
+# Explicit 35A/100A operating limits; retain qualified protections and persistence.
+substitutions:
+  # Combiner capacity ceiling precedes the upstream 10% margin, not the output limit.
+  yambms_max_requested_discharge_current: '180'
+  # Retain the trial cold allowance through 10C; enable normal discharge at 15C.
+  # The unsmoothed 0C/45C stops and the independent 100A wire ceiling remain.
+  yambms_discharging_rate_table: '{{-20.0, 0.0}, {0.0, 0.2}, {10.0, 0.2}, {15.0, 0.4}, {45.0, 0.4}, {55.0, 0.0}}'
+
+packages:
+  qualified_restart: !include yambms-restart-safe.yaml
+
+number:
+  - id: !extend yambms1_max_requested_discharge_current
+    initial_value: 100
+    max_value: 100
+    restore_value: false
+
+binary_sensor:
+  - id: !extend bms1_charging_allowed
+    lambda: return id(seplos_v3).operating_limits().charge_limit > 0;
+  - id: !extend bms1_discharging_allowed
+    lambda: return id(seplos_v3).operating_limits().discharge_limit > 0;
+
+sensor:
+  - id: !extend bms1_max_charge_current
+    lambda: return id(seplos_v3).operating_limits().charge_limit;
+  - id: !extend bms1_max_discharge_current
+    lambda: return id(seplos_v3).operating_limits().discharge_limit;
+  - id: !extend yambms1_requested_charge_current
+    filters: !remove
+  - id: !extend yambms1_requested_charge_current
+    filters:
+      - or:
+          - throttle: 10s
+          - delta: 1
+      - lambda: return esphome::seplos_parser::trial_cap(x, std::min(35.0f, id(seplos_v3).operating_limits().charge_limit));
+  - id: !extend yambms1_requested_discharge_current
+    filters: !remove
+  - id: !extend yambms1_requested_discharge_current
+    filters:
+      - or:
+          - throttle: 10s
+          - delta: 1
+      - lambda: return esphome::seplos_parser::trial_cap(x, std::min(100.0f, id(seplos_v3).operating_limits().discharge_limit));
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge"};
+  - id: !extend qualification_current_guard
+    name: Operating Limits
+    lambda: |-
+      const auto limits = id(seplos_v3).operating_limits();
+      return {limits.reason + "; protected source CCL=" + std::to_string(limits.charge_limit) +
+        "; protected source DCL=" + std::to_string(limits.discharge_limit) +
+        "; output ceilings CCL=35A; DCL=100A"};

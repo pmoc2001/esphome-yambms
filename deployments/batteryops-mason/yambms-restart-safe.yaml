@@ -1,0 +1,68 @@
+# Same qualified battery policy; persist explicit control intent, never stale data.
+packages:
+  qualified_trial: !include yambms-handover-trial.yaml
+
+globals:
+  - id: control_intent_saved
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+switch:
+  - id: !extend live_bench_output_enabled
+    name: Battery Control Enable
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_state: &commit_control_intent
+      - lambda: |-
+          const bool committed = esphome::global_preferences->sync();
+          id(control_intent_saved) = committed;
+          if (!committed) {
+            ESP_LOGE("control_intent", "Persistence failed; battery control remains blocked");
+            id(live_bench_output_enabled).turn_off();
+          }
+  - id: !extend yambms1_switch_charging
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state: *commit_control_intent
+  - id: !extend yambms1_switch_discharging
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state: *commit_control_intent
+
+binary_sensor:
+  - id: !extend bms1_can_be_combined
+    lambda: |-
+      if (!id(control_intent_saved) || !id(live_bench_output_enabled).state ||
+          !id(seplos_v3).metadata_ready()) return false;
+      const float derived[] = {
+        id(bms1_power).state, id(bms1_battery_soc).state,
+        id(bms1_battery_soh).state, id(bms1_battery_capacity_remaining).state,
+        id(bms1_charging_cycles).state, id(bms1_max_charge_current).state,
+        id(bms1_max_discharge_current).state, id(bms1_min_voltage_cell).state,
+        id(bms1_max_voltage_cell).state, id(bms1_min_temperature).state,
+        id(bms1_max_temperature).state, id(bms1_min_temperature_sensor).state,
+        id(bms1_max_temperature_sensor).state, id(bms1_cell_ovp).state,
+        id(bms1_cell_uvp).state, id(bms1_balance_trigger_voltage).state,
+        id(bms1_yambms_errors_bitmask).state
+      };
+      for (float v : derived) if (!std::isfinite(v)) return false;
+      return id(bms1_online_status).state && id(bms1_charging_allowed).has_state() &&
+        id(bms1_discharging_allowed).has_state() && id(bms1_equalizing).has_state() &&
+        id(bms1_max_charge_current).state >= 0 && id(bms1_max_discharge_current).state >= 0;
+  - platform: template
+    name: Control Intent Saved
+    device_id: qualification
+    lambda: return id(control_intent_saved);
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"RESTART-SAFE YAMBMS - Seplos SP18B FW1.5 - persisted control intent"};
+  - platform: template
+    name: Startup Admission
+    device_id: qualification
+    update_interval: 1s
+    lambda: |-
+      if (!id(control_intent_saved)) return {"Blocked: control intent not saved"};
+      if (!id(live_bench_output_enabled).state) return {"Stopped by operator"};
+      if (!id(seplos_v3).metadata_ready()) return {"Waiting for fresh valid Seplos data"};
+      if (id(seplos_v3).adapter_errors()) return {"Battery or adapter protection active"};
+      if (!id(bms1_can_be_combined).state) return {"Waiting for derived measurements"};
+      return {"Ready: existing battery protections active"};

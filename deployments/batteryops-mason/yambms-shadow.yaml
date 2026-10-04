@@ -1,0 +1,156 @@
+# Qualification only: no inverter CAN/RS485 transport and no BMS writes.
+# YamBMS source pinned at e183d206bc3b041fdd39dc2ee331e6ef22f4b84d.
+substitutions:
+  hostname: batteryops-waveshare
+  friendly_name: BatteryOps Shadow
+  board_chip: ESP32-S3
+  board_id: qualification
+  board_name: Waveshare RS485-CAN
+  yambms_id: '1'
+  yambms_name: YamBMS Shadow
+  yambms_update_interval: 1s
+  yambms_input_number_mode: box
+  yambms_battery_chemistry: '1'
+  yambms_cell_count: '16'
+  yambms_bulk_v: '55.2'
+  yambms_float_v: '53.6'
+  yambms_rebulk_v: '52.8'
+  yambms_eoc_timer: '30'
+  yambms_cutoff_timer: '60'
+  yambms_max_requested_charge_current: '35'
+  yambms_max_requested_discharge_current: '85'
+  # Dry-run tables only. No values are sent to an inverter.
+  yambms_charging_rate_table: '{{0.0, 0.0}, {5.0, 0.05}, {15.0, 0.2}, {45.0, 0.2}, {50.0, 0.0}}'
+  yambms_discharging_rate_table: '{{-20.0, 0.0}, {0.0, 0.2}, {45.0, 0.2}, {55.0, 0.0}}'
+  bms_update_interval: 3s
+  bms_id: '1'
+  bms_prefix: bms0
+  bms_name: Seplos Shadow
+  bms_model: Seplos V3
+  bms_protocol: RS485
+  seplos_parser_id: seplos_v3
+  bms_status_led_id: virtual_status_light
+  # Read from bo-Pi's retained BMS settings; no values written to the battery.
+  bms_cell_ovp: '3.660'
+  bms_cell_uvp: '2.700'
+  bms_balance_trigger_voltage: '0.050'
+
+packages:
+  wifi_diagnostics: !include wifi-test.yaml
+  project_identity: !include yam-packages/base/device_base_esphome.yaml
+  fault_registry: !include yam-packages/base/device_base_fault_registry.yaml
+  no_led: !include yam-packages/board/board_options_no_led_control.yaml
+  seplos: !include yam-packages/bms/bms_combine_SEPLOS_V3_RS485_bms_full.yaml
+  core: !include yam-packages/yambms/yambms_core.yaml
+  auto_cvl: !include yam-packages/yambms/yambms_auto_cvl.yaml
+  auto_ccl: !include yam-packages/yambms/yambms_auto_ccl.yaml
+  auto_dcl: !include yam-packages/yambms/yambms_auto_dcl.yaml
+  auto_float: !include yam-packages/yambms/yambms_auto_float.yaml
+  auto_eoc: !include yam-packages/yambms/yambms_auto_eoc.yaml
+  auto_temp: !include yam-packages/yambms/yambms_auto_temp_ccl_dcl.yaml
+  auto_soc: !include yam-packages/yambms/yambms_auto_soc_limit.yaml
+
+esphome:
+  on_boot:
+    - priority: 800
+      then:
+        - output.turn_off: rs485_transmit_enable
+  devices:
+    - id: qualification
+      name: Qualification
+
+output:
+  - platform: gpio
+    id: rs485_transmit_enable
+    pin: GPIO21
+
+uart:
+  id: seplos_uart
+  rx_pin: GPIO18
+  baud_rate: 19200
+  rx_buffer_size: 2048
+
+external_components:
+  - source:
+      type: local
+      path: shadow-components
+    components: [seplos_parser]
+
+seplos_parser:
+  - id: seplos_v3
+    uart_id: seplos_uart
+    bms_count: 1
+    address_base: 0
+    update_interval: 3
+
+time:
+  - platform: sntp
+    id: my_time
+
+binary_sensor:
+  - id: !extend bms1_equalizing
+    internal: true
+  - id: !extend bms1_can_be_combined
+    lambda: return false;
+  - platform: template
+    name: Safety Mapping Verified
+    device_id: qualification
+    lambda: return false;
+  - platform: template
+    name: Complete Data Fresh
+    device_id: qualification
+    lambda: return id(seplos_v3).pack_fresh() && id(seplos_v3).cells_fresh() && id(seplos_v3).pic_fresh();
+
+sensor:
+  - platform: template
+    name: RS485 Received Bytes
+    device_id: qualification
+    lambda: return id(seplos_v3).received_bytes();
+    accuracy_decimals: 0
+    update_interval: 5s
+  - platform: template
+    name: RS485 Valid Frames
+    device_id: qualification
+    lambda: return id(seplos_v3).valid_frames();
+    accuracy_decimals: 0
+    update_interval: 5s
+
+text_sensor:
+  - platform: template
+    name: Dry Run Safety Decision
+    device_id: qualification
+    lambda: return {id(seplos_v3).diagnostic_safety()};
+    update_interval: 3s
+  - platform: template
+    name: Reported Balancing Flags
+    device_id: qualification
+    lambda: return {id(seplos_v3).diagnostic_balancing()};
+    update_interval: 3s
+  - platform: template
+    name: Documented Status Diagnostics
+    device_id: qualification
+    lambda: return {id(seplos_v3).diagnostic_status()};
+    update_interval: 3s
+  - platform: template
+    name: Documented FET Diagnostics
+    device_id: qualification
+    lambda: return {id(seplos_v3).diagnostic_fets()};
+    update_interval: 3s
+  - platform: template
+    name: Firmware Role
+    id: qualification_firmware_role
+    device_id: qualification
+    lambda: return {"YamBMS shadow - CAN absent - pack quarantined"};
+    update_interval: 10s
+  - platform: template
+    name: Raw PIC Hex
+    device_id: qualification
+    lambda: return {id(seplos_v3).raw_pic()};
+    update_interval: 3s
+
+# Native OTA is authenticated; the web upload endpoint remains disabled.
+ota:
+  - platform: esphome
+    password: !include ota-password.yaml
+
+# No native API/MQTT, update-reporting service, or inverter transport.

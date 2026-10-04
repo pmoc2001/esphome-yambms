@@ -1,0 +1,110 @@
+# Actual-data single-source handover candidate. First supervised GX trial only.
+substitutions:
+  friendly_name: BatteryOps YamBMS
+  yambms_name: YamBMS GX Trial
+  canbus_name: SUPERVISED GX TRIAL
+  yambms_bulk_v: '55.2'
+  yambms_float_v: '53.6'
+  yambms_rebulk_v: '52.8'
+  yambms_eoc_timer: '30'
+  yambms_cutoff_timer: '60'
+  yambms_max_requested_charge_current: '35'
+  yambms_max_requested_discharge_current: '56'
+
+packages:
+  actual_data: !include yambms-status-compatible-bench.yaml
+
+switch:
+  - id: !extend live_bench_output_enabled
+    name: GX Trial Output Enable
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_charging
+    restore_mode: ALWAYS_ON
+  - id: !extend yambms1_switch_discharging
+    restore_mode: ALWAYS_ON
+  - id: !extend yambms1_switch_float
+    restore_mode: ALWAYS_ON
+  - id: !extend yambms1_switch_eoc_timer
+    restore_mode: ALWAYS_ON
+  - id: !extend yambms1_switch_temperature_based_current_limitation
+    restore_mode: ALWAYS_ON
+  - id: !extend yambms1_switch_auto_cvl
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_auto_ccl
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_auto_dcl
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_auto_eoc
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_auto_soc_limit
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_force_bulk
+    restore_mode: ALWAYS_OFF
+  - id: !extend yambms1_switch_request_force_charge
+    restore_mode: ALWAYS_OFF
+
+select:
+  - id: !extend yambms1_auto_float_mode
+    initial_option: Disabled
+    restore_value: false
+
+number:
+  - id: !extend yambms1_bulk_voltage
+    restore_value: false
+    initial_value: 55.2
+  - id: !extend yambms1_float_voltage
+    restore_value: false
+    initial_value: 53.6
+  - id: !extend yambms1_rebulk_voltage
+    restore_value: false
+    initial_value: 52.8
+  - id: !extend yambms1_rebulk_soc
+    restore_value: false
+    initial_value: 85
+  - id: !extend yambms1_rebulk_days
+    restore_value: false
+    initial_value: 0
+  - id: !extend yambms1_inverter_offset_v
+    restore_value: false
+    initial_value: 0
+  - id: !extend yambms1_max_requested_charge_current
+    restore_value: false
+    initial_value: 35
+  - id: !extend yambms1_max_requested_discharge_current
+    restore_value: false
+    initial_value: 56
+    step: 1
+
+binary_sensor:
+  - id: !extend bms1_charging_allowed
+    lambda: return id(seplos_v3).supervised_trial_limits().charge_limit > 0;
+  - id: !extend bms1_discharging_allowed
+    lambda: return id(seplos_v3).supervised_trial_limits().discharge_limit > 0;
+
+sensor:
+  - id: !extend bms1_max_charge_current
+    lambda: return id(seplos_v3).supervised_trial_limits().charge_limit;
+  - id: !extend bms1_max_discharge_current
+    lambda: return id(seplos_v3).supervised_trial_limits().discharge_limit;
+  - id: !extend yambms1_requested_charge_voltage
+    filters:
+      - lambda: return esphome::seplos_parser::trial_cap(x, 55.2f);
+  - id: !extend yambms1_requested_charge_current
+    filters:
+      - lambda: return esphome::seplos_parser::trial_cap(x, std::min(35.0f, id(seplos_v3).supervised_trial_limits().charge_limit));
+  - id: !extend yambms1_requested_discharge_current
+    filters:
+      - lambda: return esphome::seplos_parser::trial_cap(x, std::min(56.0f, id(seplos_v3).supervised_trial_limits().discharge_limit));
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"SUPERVISED GX TRIAL - actual Seplos SP18B FW1.5 - output resets OFF"};
+  - platform: template
+    id: qualification_current_guard
+    name: Trial Guard
+    device_id: qualification
+    update_interval: 1s
+    lambda: |-
+      const auto limits = id(seplos_v3).supervised_trial_limits();
+      return {limits.reason + "; trial CCL=" + std::to_string(limits.charge_limit) +
+        "; trial DCL=" + std::to_string(limits.discharge_limit)};

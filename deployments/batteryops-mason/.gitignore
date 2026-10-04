@@ -1,0 +1,10 @@
+.esphome/
+yam-packages/
+secrets.yaml
+ota-password.yaml
+*.bin
+*.elf
+*.swp
+__pycache__/
+*_RESULTS.json
+*BUILD*.json

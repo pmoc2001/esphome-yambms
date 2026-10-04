@@ -1,0 +1,540 @@
+{
+  "title": "BatteryOps",
+  "views": [
+    {
+      "title": "Overview",
+      "path": "overview",
+      "icon": "mdi:battery-high",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Battery",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.victron_system_battery_state",
+              "name": "Battery Flow",
+              "tap_action": {
+                "action": "more-info"
+              },
+              "icon": "mdi:swap-horizontal"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.yambms_gx_trial_battery_soc",
+              "name": "State of Charge",
+              "tap_action": {
+                "action": "more-info"
+              },
+              "icon": "mdi:battery-high"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.yambms_gx_trial_power",
+              "name": "Battery Power",
+              "tap_action": {
+                "action": "more-info"
+              },
+              "icon": "mdi:flash"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.yambms_gx_trial_total_voltage",
+              "name": "Battery Voltage",
+              "tap_action": {
+                "action": "more-info"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.yambms_gx_trial_current",
+              "name": "Battery Current",
+              "tap_action": {
+                "action": "more-info"
+              }
+            },
+            {
+              "type": "history-graph",
+              "title": "State of Charge",
+              "hours_to_show": 6,
+              "entities": [
+                {
+                  "entity": "sensor.yambms_gx_trial_battery_soc",
+                  "name": "SOC"
+                }
+              ]
+            },
+            {
+              "type": "history-graph",
+              "title": "Battery Power",
+              "hours_to_show": 6,
+              "entities": [
+                {
+                  "entity": "sensor.yambms_gx_trial_power",
+                  "name": "Battery"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Charging & Permissions",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "title": "Charging State",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.yambms_gx_trial_charging_status",
+                  "name": "Charging Stage"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_charging_instruction",
+                  "name": "Charge Instruction"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_requested_charge_voltage",
+                  "name": "Requested Voltage"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_requested_charge_current",
+                  "name": "Charge Allowance"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_requested_discharge_current",
+                  "name": "Discharge Allowance"
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "title": "BMS & YamBMS Limits",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_maxchgcurt",
+                  "name": "Seplos Charge Allowance"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_maxdiscurt",
+                  "name": "Seplos Discharge Allowance"
+                },
+                {
+                  "entity": "sensor.victron_bms_max_charge_current",
+                  "name": "GX Received Charge Limit"
+                },
+                {
+                  "entity": "sensor.victron_bms_max_discharge_current",
+                  "name": "GX Received Discharge Limit"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_ccl_derating_reason",
+                  "name": "Charge Reduction Reason"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_dcl_derating_reason",
+                  "name": "Discharge Reduction Reason"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "title": "Protection Decision",
+              "content": "{{ states('sensor.qualification_operating_limits') }}"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Health",
+              "heading_style": "title"
+            },
+            {
+              "type": "entities",
+              "title": "Live Status",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "binary_sensor.qualification_complete_data_fresh",
+                  "name": "Battery Data Fresh"
+                },
+                {
+                  "entity": "binary_sensor.qualification_metadata_ready",
+                  "name": "Metadata Ready"
+                },
+                {
+                  "entity": "binary_sensor.qualification_control_intent_saved",
+                  "name": "Control Intent Saved"
+                },
+                {
+                  "entity": "binary_sensor.yambms_gx_trial_inverter_communication_status",
+                  "name": "Inverter Communication"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_alarm",
+                  "name": "Alarm"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_warning",
+                  "name": "Warning"
+                },
+                {
+                  "entity": "sensor.qualification_cell_spread",
+                  "name": "Cell Spread"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_min_temperature",
+                  "name": "Coldest Sensor"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_max_temperature",
+                  "name": "Warmest Sensor"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "title": "Startup Admission",
+              "content": "{{ states('sensor.qualification_startup_admission') }}"
+            },
+            {
+              "type": "entities",
+              "title": "GX Power",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.victron_active_input_source",
+                  "name": "AC Source"
+                },
+                {
+                  "entity": "sensor.victron_grid_l1_power",
+                  "name": "Grid Power"
+                },
+                {
+                  "entity": "sensor.victron_ac_consumption_l1",
+                  "name": "House Consumption"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "title": "CAN Link",
+              "content": "{{ states('sensor.qualification_can_controller_status') }}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Cells & Balancing",
+      "path": "cells",
+      "icon": "mdi:chart-line",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Cell Voltages",
+              "heading_style": "title"
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.qualification_cell_spread",
+              "name": "Cell Spread",
+              "tap_action": {
+                "action": "more-info"
+              },
+              "icon": "mdi:arrow-expand-vertical"
+            },
+            {
+              "type": "entities",
+              "title": "Cells 1-8",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_1",
+                  "name": "Cell 1"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_2",
+                  "name": "Cell 2"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_3",
+                  "name": "Cell 3"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_4",
+                  "name": "Cell 4"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_5",
+                  "name": "Cell 5"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_6",
+                  "name": "Cell 6"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_7",
+                  "name": "Cell 7"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_8",
+                  "name": "Cell 8"
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "title": "Cells 9-16",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_9",
+                  "name": "Cell 9"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_10",
+                  "name": "Cell 10"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_11",
+                  "name": "Cell 11"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_12",
+                  "name": "Cell 12"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_13",
+                  "name": "Cell 13"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_14",
+                  "name": "Cell 14"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_15",
+                  "name": "Cell 15"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_16",
+                  "name": "Cell 16"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Cell Trends",
+              "heading_style": "title"
+            },
+            {
+              "type": "history-graph",
+              "title": "Cells 1-8",
+              "hours_to_show": 6,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_1",
+                  "name": "Cell 1"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_2",
+                  "name": "Cell 2"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_3",
+                  "name": "Cell 3"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_4",
+                  "name": "Cell 4"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_5",
+                  "name": "Cell 5"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_6",
+                  "name": "Cell 6"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_7",
+                  "name": "Cell 7"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_8",
+                  "name": "Cell 8"
+                }
+              ]
+            },
+            {
+              "type": "history-graph",
+              "title": "Cells 9-16",
+              "hours_to_show": 6,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_9",
+                  "name": "Cell 9"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_10",
+                  "name": "Cell 10"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_11",
+                  "name": "Cell 11"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_12",
+                  "name": "Cell 12"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_13",
+                  "name": "Cell 13"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_14",
+                  "name": "Cell 14"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_15",
+                  "name": "Cell 15"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_16",
+                  "name": "Cell 16"
+                }
+              ]
+            },
+            {
+              "type": "history-graph",
+              "title": "Cell Spread",
+              "hours_to_show": 6,
+              "entities": [
+                {
+                  "entity": "sensor.qualification_cell_spread",
+                  "name": "Spread"
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "title": "Cell Extremes",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.qualification_lowest_cell_number",
+                  "name": "Lowest Cell"
+                },
+                {
+                  "entity": "sensor.qualification_highest_cell_number",
+                  "name": "Highest Cell"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_min_cell_voltage",
+                  "name": "Minimum Voltage"
+                },
+                {
+                  "entity": "sensor.yambms_gx_trial_max_cell_voltage",
+                  "name": "Maximum Voltage"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Balancing & Protection",
+              "heading_style": "title"
+            },
+            {
+              "type": "markdown",
+              "title": "Seplos Reported Balancing Flags",
+              "content": "{{ states('sensor.qualification_reported_balancing_flags') }}"
+            },
+            {
+              "type": "entities",
+              "title": "Cell Temperature Sensors",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_temp_1",
+                  "name": "Sensor 1"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_temp_2",
+                  "name": "Sensor 2"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_temp_3",
+                  "name": "Sensor 3"
+                },
+                {
+                  "entity": "sensor.seplos_shadow_bms0_cell_temp_4",
+                  "name": "Sensor 4"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "title": "Seplos FET Permissions",
+              "content": "{{ states('sensor.qualification_documented_fet_diagnostics') }}"
+            },
+            {
+              "type": "markdown",
+              "title": "Seplos Status Flags",
+              "content": "{{ states('sensor.qualification_documented_status_diagnostics') }}"
+            },
+            {
+              "type": "entities",
+              "title": "Adapter Diagnostics",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.seplos_shadow_adapter_data_alarm_mask",
+                  "name": "Adapter Alarm Mask"
+                },
+                {
+                  "entity": "sensor.qualification_rs485_valid_frames",
+                  "name": "Valid RS485 Frames"
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "title": "Firmware",
+              "content": "{{ states('sensor.qualification_firmware_role') }}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+esphome:
+  name: batteryops-waveshare
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  flash_mode: dio
+  framework:
+    type: esp-idf
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
+
+# No CAN, UART, battery control or remotely writable entities in this build.
+wifi:
+  reboot_timeout: 0s
+  ap:
+    ssid: BatteryOps-Waveshare-Setup
+    password: !secret setup_password
+    ap_timeout: 15s
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+  local: true
+  include_internal: false
+  log: false
+  ota: false
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi Signal
+    update_interval: 10s
+  - platform: uptime
+    name: Uptime
+    update_interval: 10s
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+    ssid:
+      name: Connected Network
+    mac_address:
+      name: MAC Address
