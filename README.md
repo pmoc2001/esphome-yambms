@@ -7,6 +7,37 @@
 ![GitHub watchers](https://img.shields.io/github/watchers/Sleeper85/esphome-yambms)
 [!["Buy Me A Coffee"](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg)](https://www.buymeacoffee.com/sleeper85)
 
+## BatteryOps fork changes
+
+Our installation is maintained on **`batteryops/mason-waveshare-ha`**, separate
+from the upstream-derived `main` branch. The pinned upstream baseline is
+`e183d206bc3b041fdd39dc2ee331e6ef22f4b84d`; this is not a claim that we track
+the newest upstream release. The upstream documentation continues below.
+
+**Current installation:** one Seplos Mason 16S 280 Ah battery, SP18B V3 firmware
+1.5, read by a Waveshare ESP32-S3-RS485-CAN and presented to Victron GX over CAN.
+Use [the BatteryOps deployment README](deployments/batteryops-mason/README.md)
+and [our complete change log](deployments/batteryops-mason/CHANGELOG.md) for this
+installation. These customisations are not a universal Seplos firmware.
+
+| Our changes relative to the pinned upstream baseline | Current scope |
+| --- | --- |
+| Custom Seplos V3 passive RS485 reader and YamBMS adapter | bo-Pi remains the sole poller; no BMS writes |
+| Qualified status profiles for FET byte15 `0x40` and balancing byte16 `0x20` | Narrow normal-status handling; other unknown bits still block |
+| Freshness, metadata, cell/temperature and raw protection guards | Retained before CAN admission and current-limit publication |
+| Persisted master and directional stop intent | Enabled/stopped soft restart recovery tested; cold boot remains unqualified |
+| Operating profile replacing commissioning limits | 55.2 V bulk, 53.6 V float, 35 A charge / 100 A discharge maxima |
+| Encrypted native ESPHome API and HA dashboard export | Monitoring only; HA control entities disabled locally |
+| Pinned package bootstrap, local YAML overrides and native regression tests | Reproducible source; no firmware images or credentials in public Git |
+| Supervised GX migration and recovery records | Charge/discharge stop and CAN-loss charge shutdown/recovery tested; private backups retained |
+
+The installed entry point is
+[`yambms-balancing-status-fix.yaml`](deployments/batteryops-mason/yambms-balancing-status-fix.yaml).
+The change log separates deployed changes, offline evidence, live tests and
+planned work. Update it when changing this fork; do not silently replace the
+pinned package baseline. T-Connect standalone polling and multiple batteries
+are **not deployed**.
+
 > [!TIP]
 > This page contains many links to other README.
 > If you don't find answers to your questions, [you'll find all the README in this folder](documents/README).

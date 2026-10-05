@@ -8,3 +8,4 @@ ota-password.yaml
 __pycache__/
 *_RESULTS.json
 *BUILD*.json
+BALANCING_STATUS_*.json

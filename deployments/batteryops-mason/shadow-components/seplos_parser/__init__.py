@@ -29,7 +29,9 @@ CONFIG_SCHEMA = (
         cv.Optional(CONF_BMS_COUNT, default=1): cv.int_,
         cv.Optional(CONF_ADDRESS_BASE, default=1): cv.int_range(min=0, max=1),
         cv.Optional("replay_only", default=False): cv.boolean,
-        cv.Optional("status_profile", default="strict"): cv.one_of("strict", "v3_sp18b_fw15"),
+        cv.Optional("status_profile", default="strict"): cv.one_of(
+            "strict", "v3_sp18b_fw15", "v3_sp18b_fw15_balancing"
+        ),
     })
         .extend(cv.COMPONENT_SCHEMA)
         .extend(uart.UART_DEVICE_SCHEMA)

@@ -4,6 +4,9 @@ Qualified local deployment for one 16S 280 Ah Seplos Mason, SP18B V3 firmware
 1.5, on the Waveshare ESP32-S3-RS485-CAN. This is not a general-purpose
 firmware for unknown Seplos models or other batteries.
 
+See the [complete fork change log](CHANGELOG.md) for all customisations relative
+to the pinned upstream baseline, their test evidence and remaining boundaries.
+
 ## Connections and ownership
 
 - RS485 is a passive receiver: GPIO18 RX, 19200 baud, GPIO21 driver-enable
@@ -33,9 +36,51 @@ limits (charge blocked at 3.55 V maximum cell; discharge at 2.90 V minimum
 cell), temperature stops and cold charging/discharging reductions. Explicit
 operator stops persist across restarts. Startup requires fresh telemetry.
 
-The narrow status profile accepts only the qualified SP18B firmware-1.5
-FET-status extension (0x40). It does not ignore arbitrary unknown bits.
+The installed narrow status profile accepts the qualified SP18B firmware-1.5
+FET-status extension (0x40) and the manufacturer-classified normal balancing
+status bit (byte16 0x20). It does not ignore arbitrary unknown bits.
 Reported balancing flags are not a measurement of active-balancer current.
+
+## Balancing status fix - 5 October 2026
+
+The previous 4 October image intermittently blocked a second reserved status
+bit: PIC coil0x1285, byte16 mask0x20. This is not the earlier FET extension.
+Seplos's official DevBMSStudio V2.0.0.4 SP, published 17 March 2026, classifies
+PIC row134 as `attribute=Normal`, not Warn/Protect, while leaving its physical
+meaning labelled Reservation. Do not claim this measures active-balancer current.
+
+The opt-in `v3_sp18b_fw15_balancing` profile accepts exactly this additional
+non-fault status bit. Strict and previous FET-only profiles remain unchanged.
+Raw bytes/reserved counts remain visible; the portal separately reports
+`accepted_balancing_status`. All documented protections, FET permissions,
+reported zero allowances, freshness, CRC, metadata, cell/temperature guards
+and the other 17 reserved bits remain enforced.
+
+Use `yambms-balancing-status-fix.yaml` to select the new profile while inheriting
+the existing HA operating policy without changing charging settings. Offline
+qualification: eight native ASan/UBSan suites, all 37 legacy operating scenarios,
+all 37 scenarios with the new status asserted, and 16 compiled boundary checks.
+Installed on 5 October 2026 using a verified grid-connected zero-energy hold.
+Saved stops survived OTA; original GX/DESS settings and the 35/100 A profile
+were restored. Twelve healthy GX/MultiPlus samples passed with no battery
+alarms and zero CAN errors. The intermittent additional bit did not recur in
+that soak: its acceptance is qualified by captured-message offline replay,
+not yet by observing its recurrence after installation. This repair does not
+claim to fix separate bridge/metadata/SQLite symptoms.
+
+```bash
+python3 bootstrap_packages.py
+python3 tests/qualify_balancing_status.py
+esphome compile yambms-balancing-status-fix.yaml
+```
+
+Native tests need g++, Python and PyYAML, but no device access or secrets.
+They compare policy hashes against the tracked `qualification.json` baseline.
+The optional `--compiled` mode also needs local ESPHome build output and
+private release/rollback evidence from the deployment backup; it never uploads.
+
+Official source: [Seplos software download](https://www.seplos.com/bms-3.0-battery-management-software-devbmsstudio-v2.0.0.4--sp-2026.03.17.html).
+Package SHA256: `a40f325b7bdd06b5269642cf393782e3b75eed4ef5627121d3f2b1fe2f781e6c`.
 
 ## Reproduce offline
 
@@ -54,6 +99,10 @@ and private `ota-password.yaml` containing a YAML scalar OTA password.
 Generate an API key using `openssl rand -base64 32`. Wi-Fi station credentials
 are retained in device NVS; provision a new device using its setup portal.
 Do not publish NVS dumps, generated C++, firmware binaries or secret files.
+The repository-root `secrets.yaml` is an inherited upstream template, not our
+installation credentials; never put real credentials into that tracked file.
+Use this deployment's ignored private secret files and review staged changes
+with `gitleaks git --staged --redact=100 --no-banner` before publishing.
 The YAML include chain retains historical qualification names, but the
 operating build admits one real battery only, not a synthetic bench battery.
 

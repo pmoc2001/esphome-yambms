@@ -1,0 +1,11 @@
+# Opt-in SP18B FW1.5 compatibility; retain the complete HA operating policy.
+packages:
+  operating_ha: !include yambms-ha.yaml
+
+seplos_parser:
+  - id: !extend seplos_v3
+    status_profile: v3_sp18b_fw15_balancing
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - balance status qualified"};

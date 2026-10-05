@@ -18,7 +18,12 @@ parser.add_argument('--adapter', action='store_true')
 parser.add_argument('--handover', action='store_true')
 parser.add_argument('--restart-safe', action='store_true')
 parser.add_argument('--operating', action='store_true')
+parser.add_argument('--balancing-status', action='store_true',
+                    help='Replay the qualified balancing extension through every operating scenario')
+parser.add_argument('--output', type=Path, help='Write evidence without replacing a prior qualification')
 args = parser.parse_args()
+if args.balancing_status and not args.operating:
+    parser.error('--balancing-status requires --operating')
 if args.operating:
     args.restart_safe = True
 if args.restart_safe:
@@ -221,6 +226,8 @@ with tempfile.TemporaryDirectory(prefix='batteryops-yam-logic-') as temporary:
         command += ['-DRESTART_MODE']
     if args.operating:
         command += ['-DOPERATING_MODE']
+    if args.balancing_status:
+        command += ['-DBALANCE_STATUS_MODE']
     subprocess.run(command + [str(source), '-o', str(binary)], check=True)
     scenarios = ['normal', 'zero_ccl', 'zero_dcl', 'charge_off', 'disconnect',
                  'startup', 'cutoff_float', 'no_float', 'auto_ccl_stop', 'missing_measurement',
@@ -265,6 +272,9 @@ with tempfile.TemporaryDirectory(prefix='batteryops-yam-logic-') as temporary:
                 'YAMBMS_RESTART_LOGIC_RESULTS.json' if args.restart_safe else
                 'YAMBMS_HANDOVER_LOGIC_RESULTS.json' if args.handover else
                 'YAMBMS_ADAPTER_RESULTS.json' if args.adapter else 'YAMBMS_LOGIC_RESULTS.json')
-    (ROOT / filename).write_text(json.dumps(report, indent=2) + '\n')
+    if args.balancing_status:
+        filename = 'YAMBMS_BALANCING_STATUS_LOGIC_RESULTS.json'
+        report['status_profile'] = 'v3_sp18b_fw15_balancing'
+    (args.output or ROOT / filename).write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
     raise SystemExit(any(item['exit_code'] != 0 for item in results))

@@ -135,7 +135,12 @@ int main(int argc, char **argv) {
   assert(argc == 2); std::string scenario = argv[1]; fixture();
   const bool compatible = scenario.rfind("v3_fet_extension", 0) == 0 || scenario.rfind("trial_",0) == 0 || scenario.rfind("restart_",0) == 0 || scenario.rfind("operating_",0) == 0;
   if (compatible) {
+#ifdef BALANCE_STATUS_MODE
+    seplos_v3.set_status_profile("v3_sp18b_fw15_balancing");
+    pic[6] = 8; pic[16] = 0x21;
+#else
     seplos_v3.set_status_profile("v3_sp18b_fw15");
+#endif
     pic[15] = 0x43;
     const std::string prefix = "v3_fet_extension_";
     const std::string suffix = scenario.substr(std::min(scenario.size(), prefix.size()));
@@ -264,7 +269,12 @@ int main(int argc, char **argv) {
 #endif
       assert(yambms1_requested_discharge_current.state > 0);
       assert(yambms1_errors_bitmask_alarm.state == 0);
+#ifdef BALANCE_STATUS_MODE
+      assert(seplos_v3.pic_status().reserved_flags() == 2);
+      assert(seplos_v3.raw_pic().substr(32,2) == "21");
+#else
       assert(seplos_v3.pic_status().reserved_flags() == 1);
+#endif
       assert(seplos_v3.blocking_unknown_flags() == 0);
       assert(seplos_v3.raw_pic().substr(30,2) == "43");
     } else if (scenario == "zero_ccl" || scenario == "zero_dcl" || scenario == "both_zero") {
@@ -296,6 +306,9 @@ int main(int argc, char **argv) {
       for (const auto &entry : coils) {
         auto coil = entry[0];
         pic.assign(18, 0); pic[15] = compatible ? 0x43 : 3; pic[coil / 8] |= 1 << (coil % 8);
+#ifdef BALANCE_STATUS_MODE
+        pic[6] = 8; pic[16] |= 0x21;
+#endif
         status(); tick(); stopped();
         assert(yambms1_errors_bitmask_alarm.state == entry[1]);
       }

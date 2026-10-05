@@ -13,6 +13,7 @@ struct PicStatus {
   bool charge_fet() const { return bytes[15] & 2; }
   bool discharge_fet() const { return bytes[15] & 1; }
   bool fet_status_extension() const { return bytes[15] & 0x40; }
+  bool balancing_status_extension() const { return bytes[16] & 0x20; }
   bool balancing_module() const { return bytes[16] & 1; }
   bool static_balancing() const { return bytes[16] & 2; }
   bool balancing_temperature_inhibit() const { return bytes[16] & 8; }
@@ -52,10 +53,14 @@ struct PicStatus {
     };
     return count(masks);
   }
-  unsigned blocking_reserved_flags(bool sp18b_fw15_profile = false) const {
+  unsigned blocking_reserved_flags(bool sp18b_fw15_profile = false,
+                                   bool sp18b_fw15_balancing_profile = false) const {
     // PIC and EIC share the FET-state table. Only the observed 0x40 status
     // extension is non-fault for this qualified profile; never clear raw data.
-    return reserved_flags() - unsigned(sp18b_fw15_profile && fet_status_extension());
+    // DevBMSStudio V2.0.0.4 SP PIC row134 classifies coil0x1285 as Normal,
+    // not Warn/Protect. Its physical meaning remains reserved; do not invent it.
+    return reserved_flags() - unsigned(sp18b_fw15_profile && fet_status_extension()) -
+      unsigned(sp18b_fw15_profile && sp18b_fw15_balancing_profile && balancing_status_extension());
   }
  private:
   unsigned count(const uint8_t *masks) const {
@@ -74,11 +79,12 @@ struct SafetyPreview {
   std::string reason;
 };
 inline SafetyPreview preview_safety(bool fresh, const PicStatus &pic, float ccl, float dcl,
-                                   bool sp18b_fw15_profile = false) {
+                                   bool sp18b_fw15_profile = false,
+                                   bool sp18b_fw15_balancing_profile = false) {
   if (!fresh) return {0, 0, "blocked: incomplete or stale data"};
   if (!std::isfinite(ccl) || !std::isfinite(dcl) || ccl < 0 || dcl < 0)
     return {0, 0, "blocked: invalid current limits"};
-  if (pic.blocking_reserved_flags(sp18b_fw15_profile))
+  if (pic.blocking_reserved_flags(sp18b_fw15_profile, sp18b_fw15_balancing_profile))
     return {0, 0, "blocked: undocumented status bits"};
   if (pic.protections()) return {0, 0, "blocked: protection asserted"};
   return {pic.charge_fet() ? ccl : 0, pic.discharge_fet() ? dcl : 0,

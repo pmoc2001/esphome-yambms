@@ -49,10 +49,11 @@ class SeplosParser : public uart::UARTDevice, public Component {
   void set_address_base(int address_base) { address_base_ = address_base; }
   void set_replay_only(bool replay_only) { replay_only_ = replay_only; }
   void set_status_profile(const std::string &profile) {
-    sp18b_fw15_profile_ = profile == "v3_sp18b_fw15";
+    sp18b_fw15_balancing_profile_ = profile == "v3_sp18b_fw15_balancing";
+    sp18b_fw15_profile_ = profile == "v3_sp18b_fw15" || sp18b_fw15_balancing_profile_;
   }
   unsigned blocking_unknown_flags() const {
-    return pic_status_.blocking_reserved_flags(sp18b_fw15_profile_);
+    return pic_status_.blocking_reserved_flags(sp18b_fw15_profile_, sp18b_fw15_balancing_profile_);
   }
   void feed_replay_frame(const std::vector<uint8_t> &frame);
   void reset_replay();
@@ -127,8 +128,10 @@ class SeplosParser : public uart::UARTDevice, public Component {
       "; protections=" + std::to_string(pic_status_.protections()) +
       "; reserved=" + std::to_string(pic_status_.reserved_flags()) +
       "; accepted_fet_status=" + std::to_string(unsigned(sp18b_fw15_profile_ && pic_status_.fet_status_extension())) +
+      "; accepted_balancing_status=" + std::to_string(unsigned(sp18b_fw15_balancing_profile_ && pic_status_.balancing_status_extension())) +
       "; blocking_unknown=" + std::to_string(blocking_unknown_flags()) +
-      "; mapping=V0.3; profile=" + (sp18b_fw15_profile_ ? "v3_sp18b_fw15" : "strict");
+      "; mapping=V0.3; profile=" + (sp18b_fw15_balancing_profile_ ? "v3_sp18b_fw15_balancing" :
+        sp18b_fw15_profile_ ? "v3_sp18b_fw15" : "strict");
   }
   std::string diagnostic_fets() const {
     if (!pic_fresh()) return "unavailable - stale status";
@@ -138,7 +141,7 @@ class SeplosParser : public uart::UARTDevice, public Component {
   const PicStatus &pic_status() const { return pic_status_; }
   SafetyPreview safety_preview() const {
     return preview_safety(pack_fresh() && cells_fresh() && pic_fresh(), pic_status_, ccl_, dcl_,
-                          sp18b_fw15_profile_);
+                          sp18b_fw15_profile_, sp18b_fw15_balancing_profile_);
   }
   bool adapter_charge_allowed() const { return safety_preview().charge_limit > 0; }
   SafetyPreview supervised_trial_limits() const {
@@ -179,6 +182,7 @@ private:
   void accept_byte_(uint8_t byte);
   bool replay_only_{false};
   bool sp18b_fw15_profile_{false};
+  bool sp18b_fw15_balancing_profile_{false};
   bool pack_seen_{false}, cells_seen_{false}, pic_seen_{false};
   uint32_t pack_ms_{0}, cells_ms_{0}, pic_ms_{0};
   std::string raw_pic_;
