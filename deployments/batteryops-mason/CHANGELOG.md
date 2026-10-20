@@ -4,7 +4,7 @@ This records all BatteryOps YamBMS customisations captured in this fork through
 20 October 2026, with separately prepared work identified explicitly. It does not describe unrelated BatteryOps host, charger, wiring
 or OpenClaw changes as YamBMS source changes.
 
-## 20 October: Reboot And Timer Correction Prepared, Not Installed
+## 20 October: Reboot And Timer Correction Installed, Recovery Verified
 
 - Added `yambms-reboot-timer.yaml`. AutoCCL restores saved ON/OFF intent,
   defaults ON and requests immediate native preference sync. Existing AutoCVL
@@ -26,6 +26,19 @@ or OpenClaw changes as YamBMS source changes.
   `!secret` references. Those examples are outside the live Waveshare include
   chain. Public history was not rewritten; private installation keys, binaries
   and generated files are excluded from the published source.
+- Subsequent authorized installation used one OTA under a verified zero-current
+  hold. First boot restored an older AutoCCL OFF preference, so admission stayed
+  stopped. Saved intended ON with the new firmware, then one controlled soft
+  restart proved ON persistence without a post-boot command. Saved master and
+  directional stops survived both restarts.
+- Native admission and 12 consecutive recovery samples passed; exact captured
+  ESS/DESS settings restored. Separate cloud-planning and active GX schedule
+  acceptance passed. No BMS/shunt settings or charge thresholds changed.
+- Qualified elapsed display was zero under the stopped hold. A future active
+  finishing window and unattended mains-loss/cold-boot recovery are not proven.
+  The new informational Restart Policy text label remains blank; actual switch
+  states are readable. This cosmetic issue is recorded, not silently treated
+  as verified or used to justify another immediate OTA.
 
 ## 19 October: Bounded Finishing Pause V2 Installed
 
@@ -169,8 +182,8 @@ not part of this single-node operating release and is not installed.
 - One Seplos Mason 16S 280 Ah, SP18B V3 firmware 1.5, on Waveshare ESP32-S3-RS485-CAN.
 - Our package changes live under `package-overrides/`; upstream packages are
   materialized by `bootstrap_packages.py`, not edited in place in public Git.
-- Latest recorded installed release: bounded finishing pause v2. New candidate
-  entry point: `yambms-reboot-timer.yaml`, not installed. Earlier wrappers are
+- Latest recorded installed release: reboot/timer v4, entry point
+  `yambms-reboot-timer.yaml`. Earlier wrappers are
   retained for history/testing, not all simultaneously installed.
 
 Compare every committed fork change with our pinned baseline:

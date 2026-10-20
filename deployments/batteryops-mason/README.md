@@ -7,11 +7,23 @@ firmware for unknown Seplos models or other batteries.
 See the [complete fork change log](CHANGELOG.md) for all customisations relative
 to the pinned upstream baseline, their test evidence and remaining boundaries.
 
-## Prepared Release - 20 October 2026
+## Installed Release - 20 October 2026
 
 `yambms-reboot-timer.yaml` combines two focused corrections with the installed
-reader and finishing guards. **It is not installed yet.** Publishing source or
-passing simulated restart tests is not proof of a live controller restart.
+reader and finishing guards. **It is installed.** One OTA and one subsequent
+controlled soft restart passed under a verified mains-supported hold.
+Publishing source or passing simulated tests alone was not the acceptance.
+
+The first boot exposed a legacy saved AutoCCL OFF preference. Output remained
+stopped; the operator's intended ON setting was saved using the new firmware,
+then a soft restart confirmed it returned ON without a post-boot write.
+AutoCVL/EOC remained ON and all three saved output stops survived.
+
+Twelve consecutive native GX samples passed from 09:48:47 to 09:50:15 BST:
+sole managed Yam battery instance512, fresh data, 50/100 A permissions,
+55.2 V ceiling and no active native battery alarms. Captured ESS/DESS settings
+were restored. Separate fresh cloud-planning and active delivered-schedule
+checks passed. This was not a full-charge test or a physical cold-boot test.
 
 - AutoCCL restores the last explicit ON/OFF choice, defaults ON without a saved
   choice, and immediately requests native flash persistence. AutoCVL already
@@ -28,7 +40,7 @@ Saved master/directional stops, fresh-data admission, 55.2/53.6 V targets,
 No T-Connect transport or polling changes are included. See
 [qualification and deployment boundaries](RELEASE_20261020.md).
 
-## Installed Release - 19 October 2026
+## Previous Release - 19 October 2026
 
 **Bounded finishing pause v2 is installed on the Waveshare.** The operator
 confirmed supervision with mains available. One OTA completed, followed by
@@ -118,7 +130,8 @@ This operating branch incorporates the previously private transaction-reader,
 50 A and finishing-session source and tests. `yambms-finish-pause.yaml` includes
 the timer-display correction; use the retained private v2 image for an exact
 rollback, not a rebuild of the now-corrected file. The 20 October entry point
-adds the reboot policy. Source publication does not install either change.
+adds the reboot policy and is now installed as recorded above. Source
+publication alone did not install either change.
 Credentials, compiled binaries, generated C++ and private telemetry are excluded.
 
 The existing bo-Pi remains the sole Seplos poller. The separate T-Connect plus
