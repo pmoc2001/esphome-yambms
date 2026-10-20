@@ -6,6 +6,13 @@ ota-password.yaml
 *.elf
 *.swp
 __pycache__/
+build/
+*.log
+*.map
+*.tgz
+*.tar.gz
+private/
+evidence/
 *_RESULTS.json
 *BUILD*.json
 BALANCING_STATUS_*.json

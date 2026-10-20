@@ -1,0 +1,25 @@
+# Offline candidate. Requires observed requests AND responses on the passive bus.
+# Do not deploy without the supervised acceptance procedure in the incident note.
+packages:
+  qualified_operating: !include yambms-auto-cvl-persistent.yaml
+
+esphome:
+  build_path: .esphome/build/transaction-reader-v2
+
+seplos_parser:
+  - id: !extend seplos_v3
+    transaction_tracking: true
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - balance status qualified - cut-off 600s trial - persistent Auto CVL - transaction reader v3"};
+  - platform: template
+    name: Measurement Admission
+    device_id: qualification
+    update_interval: 1s
+    lambda: return {id(seplos_v3).diagnostic_metadata()};
+  - platform: template
+    name: Transaction Reader Counters
+    device_id: qualification
+    update_interval: 1s
+    lambda: return {id(seplos_v3).diagnostic_transactions()};

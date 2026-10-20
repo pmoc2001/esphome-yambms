@@ -9,7 +9,7 @@
 
 ## BatteryOps fork changes
 
-Our installation is maintained on **`batteryops/mason-waveshare-ha`**, separate
+This operating release is maintained on **`batteryops/mason-reboot-timer-20261020`**, separate
 from the upstream-derived `main` branch. The pinned upstream baseline is
 `e183d206bc3b041fdd39dc2ee331e6ef22f4b84d`; this is not a claim that we track
 the newest upstream release. The upstream documentation continues below.
@@ -26,13 +26,18 @@ installation. These customisations are not a universal Seplos firmware.
 | Qualified status profiles for FET byte15 `0x40` and balancing byte16 `0x20` | Narrow normal-status handling; other unknown bits still block |
 | Freshness, metadata, cell/temperature and raw protection guards | Retained before CAN admission and current-limit publication |
 | Persisted master and directional stop intent | Enabled/stopped soft restart recovery tested; cold boot remains unqualified |
-| Operating profile replacing commissioning limits | 55.2 V bulk, 53.6 V float, 35 A charge / 100 A discharge maxima |
+| Operating profile replacing commissioning limits | 55.2 V bulk, 53.6 V float, 50 A charge / 100 A discharge maxima |
+| Transaction-aware reader and guarded finishing attempts | Installed repairs; invalid/stale data and protection events still cancel finishing |
+| Bounded finishing pause | Installed: at most 3 A, 60 seconds and 0.05 Ah; discharge time cannot count towards completion |
+| Reboot and timer-display correction | Prepared: AutoCCL restores saved intent; EOC boots ON; elapsed display cannot wrap to 600 seconds |
 | Encrypted native ESPHome API and HA dashboard export | Monitoring only; HA control entities disabled locally |
 | Pinned package bootstrap, local YAML overrides and native regression tests | Reproducible source; no firmware images or credentials in public Git |
 | Supervised GX migration and recovery records | Charge/discharge stop and CAN-loss charge shutdown/recovery tested; private backups retained |
 
-The installed entry point is
-[`yambms-balancing-status-fix.yaml`](deployments/batteryops-mason/yambms-balancing-status-fix.yaml).
+The installed release is bounded finishing pause v2 (19 October).
+The new **not-yet-installed** entry point is
+[`yambms-reboot-timer.yaml`](deployments/batteryops-mason/yambms-reboot-timer.yaml).
+See the [release and restart policy](deployments/batteryops-mason/RELEASE_20261020.md).
 The change log separates deployed changes, offline evidence, live tests and
 planned work. Update it when changing this fork; do not silently replace the
 pinned package baseline. T-Connect standalone polling and multiple batteries

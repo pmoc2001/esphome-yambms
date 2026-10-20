@@ -1,0 +1,49 @@
+# Offline candidate only. Installation requires the supervised OTA hold.
+packages:
+  transaction_reader: !include yambms-transaction-reader.yaml
+
+esphome:
+  build_path: build/finish-session-fix
+  on_boot:
+    - priority: 600
+      then:
+        - lambda: |-
+            id(yambms1_var_finish_source_guard) = [](bool allow_balancing) {
+              id(yambms1_var_finish_reason) = "operator stop or unsaved control intent";
+              if (!id(control_intent_saved) || !id(live_bench_output_enabled).state) return false;
+              id(yambms1_var_finish_reason) = "source data stale or incomplete";
+              if (!id(seplos_v3).metadata_ready()) return false;
+              id(yambms1_var_finish_reason) = "protected source: " + id(seplos_v3).operating_limits().reason;
+              if (id(seplos_v3).operating_limits().charge_limit <= 0) return false;
+              // Use pre-filter pack samples if a new packet precedes the merge loop.
+              const float current = id(bms1_current).get_raw_state();
+              const float high_cell = id(bms1_max_cell_voltage).get_raw_state();
+              const float capacity = id(yambms1_battery_capacity).state;
+              const float cv_min = id(yambms1_var_cell_min_charge_v);
+              const float cv_max = id(yambms1_var_cell_max_charge_v);
+              id(yambms1_var_finish_reason) = "invalid raw measurement";
+              if (!std::isfinite(current) || !std::isfinite(high_cell) ||
+                  !std::isfinite(capacity) || capacity <= 0 ||
+                  !std::isfinite(cv_min) || !std::isfinite(cv_max) || cv_min <= 0 || cv_max <= cv_min) return false;
+              id(yambms1_var_finish_source_current) = current;
+              const float resistance = (cv_max - cv_min) / capacity / 0.05f;
+              id(yambms1_var_finish_reason) = "raw voltage/current qualification lost";
+              if (high_cell - resistance * std::max(current, 0.0f) < cv_min) return false;
+              if (current < 0) {
+                id(yambms1_var_finish_reason) = "raw voltage fell during discharge";
+                if (!std::isfinite(id(yambms1_bulk_voltage).state) ||
+                    !std::isfinite(id(yambms1_cell_count).state) || id(yambms1_cell_count).state <= 0 ||
+                    high_cell < id(yambms1_bulk_voltage).state / id(yambms1_cell_count).state - resistance) return false;
+              }
+              id(yambms1_var_finish_reason) = "balancing active";
+              return allow_balancing || !id(seplos_v3).adapter_equalizing();
+            };
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - transaction reader v3 - finish session fix v1"};
+  - platform: template
+    name: Finishing Session
+    device_id: qualification
+    update_interval: 1s
+    lambda: return {id(yambms1_var_finish_outcome)};

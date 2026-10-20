@@ -306,6 +306,83 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'  
+  # Hard interruptions cancel; bounded reversals pause only an existing attempt.
+  - id: yambms${yambms_id}_var_finish_attempt
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_finish_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: yambms${yambms_id}_var_finish_allowed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: yambms${yambms_id}_var_finish_source_guard
+    type: std::function<bool(bool)>
+    restore_value: no
+    initial_value: '[](bool) { return true; }'
+  - id: yambms${yambms_id}_var_ms_cutoff
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_ms_bulk
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_eoc_timer_started
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_cutoff_timer_started
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_eoc_timer_armed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: yambms${yambms_id}_var_cutoff_timer_armed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: yambms${yambms_id}_var_finish_outcome
+    type: std::string
+    restore_value: no
+    initial_value: '"Idle"'
+  - id: yambms${yambms_id}_var_finish_reason
+    type: std::string
+    restore_value: no
+    initial_value: '"Not qualifying"'
+  - id: yambms${yambms_id}_var_finish_source_current
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: yambms${yambms_id}_var_finish_paused
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: yambms${yambms_id}_var_finish_check_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_finish_previous_reverse_a
+    type: float
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_finish_reverse_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_finish_reverse_amp_ms
+    type: double
+    restore_value: no
+    initial_value: '0'
+  - id: yambms${yambms_id}_var_finish_pause_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
 
 esphome:
   # The 'devices' block will merge into the main config's 'esphome' block.
@@ -679,6 +756,10 @@ interval:
           // +-----------------------------------------------+
           // | STEP 3 - YamBMS Logic                         |
           // +-----------------------------------------------+
+          id(yambms${yambms_id}_script_finish_check).execute();
+          if (!id(yambms${yambms_id}_var_finish_allowed))
+            id(yambms${yambms_id}_script_finish_cancel).execute();
+
           if ((id(yambms${yambms_id}_bms_combined).has_state()) &&
               (id(yambms${yambms_id}_total_voltage).has_state()) &&
               (id(yambms${yambms_id}_current).has_state()) &&
@@ -792,15 +873,20 @@ interval:
                 float cutoff_resistance = ((cv_max - cv_min) / id(yambms${yambms_id}_battery_capacity).state / 0.05);
 
                 uint32_t ms_now = millis();
-                static uint32_t ms_cutoff = ms_now;
-                static uint32_t ms_bulk = ms_now;
+                uint32_t &ms_cutoff = id(yambms${yambms_id}_var_ms_cutoff);
+                uint32_t &ms_bulk = id(yambms${yambms_id}_var_ms_bulk);
 
                 // +-----------------------------------------------+
                 // | Cut-Off Charging Logic                        |
                 // +-----------------------------------------------+
 
                 // Charging
-                if (current >= 0)
+                if (id(yambms${yambms_id}_var_finish_active) && id(yambms${yambms_id}_var_finish_paused))
+                {
+                  ms_bulk = ms_now;
+                  ms_cutoff = ms_now - 10000;
+                }
+                else if (current >= 0)
                 {
                   float cutoff_voltage = (max_cell_v - cutoff_resistance * current);
 
@@ -828,21 +914,32 @@ interval:
                 if (ms_now - ms_bulk >= 10000) // 10s
                 {
                   ESP_LOGD("yambms_debug", "Entering the Bulk phase...");
-                  // Stop timer
-                  if (id(yambms${yambms_id}_script_eoc_timer).is_running()) id(yambms${yambms_id}_script_eoc_timer).stop();
-                  if (id(yambms${yambms_id}_script_cutoff_timer).is_running()) id(yambms${yambms_id}_script_cutoff_timer).stop();
+                  id(yambms${yambms_id}_script_finish_cancel).execute();
                   // Balancing : the BMS is equalizing the cells
                   if (id(yambms${yambms_id}_equalizing).state) id(yambms${yambms_id}_var_charge_status) = "Balancing";
                   // Bulk
                   else id(yambms${yambms_id}_var_charge_status) = "Bulk";
                 }
                 // Cut-Off phase
-                else if (ms_now - ms_cutoff >= 10000) // 10s
+                else if (id(yambms${yambms_id}_var_finish_allowed) && ms_now - ms_cutoff >= 10000) // 10s
                 {
                   ESP_LOGD("yambms_debug", "Entering the Cut-Off phase...");
 
                   // Cut-Off : the end of charging is near
                   id(yambms${yambms_id}_var_charge_status) = "Cut-Off";
+                  if (!id(yambms${yambms_id}_var_finish_active))
+                  {
+                    // Keep the signed script parameter in range, including long uptimes.
+                    if (id(yambms${yambms_id}_var_finish_attempt) == 2147483647)
+                      id(yambms${yambms_id}_var_finish_attempt) = 0;
+                    ++id(yambms${yambms_id}_var_finish_attempt);
+                    id(yambms${yambms_id}_var_finish_active) = true;
+                    id(yambms${yambms_id}_var_finish_check_ms) = ms_now;
+                    id(yambms${yambms_id}_var_finish_previous_reverse_a) = 0;
+                    id(yambms${yambms_id}_var_finish_reverse_ms) = 0;
+                    id(yambms${yambms_id}_var_finish_reverse_amp_ms) = 0;
+                    id(yambms${yambms_id}_var_finish_pause_ms) = 0;
+                  }
 
                   // If the EOC Timer switch is enabled
                   if (id(yambms${yambms_id}_switch_eoc_timer).state)
@@ -850,7 +947,17 @@ interval:
                     // Start EOC timer
                     // The charging process ends at the latest at the end of this timer (30min by default)
                     if (!id(yambms${yambms_id}_script_eoc_timer).is_running())
-                      id(yambms${yambms_id}_script_eoc_timer).execute();
+                    {
+                      if (!id(yambms${yambms_id}_var_eoc_timer_armed))
+                        id(yambms${yambms_id}_var_eoc_timer_started) = ms_now;
+                      id(yambms${yambms_id}_var_eoc_timer_armed) = true;
+                      id(yambms${yambms_id}_script_eoc_timer).execute(id(yambms${yambms_id}_var_finish_attempt));
+                    }
+                  }
+                  else
+                  {
+                    id(yambms${yambms_id}_script_eoc_timer).stop();
+                    id(yambms${yambms_id}_var_eoc_timer_armed) = false;
                   }
                   // End Of Charge
                   // Equalizing
@@ -859,11 +966,20 @@ interval:
                     // Stop cut-off timer
                     if (id(yambms${yambms_id}_script_cutoff_timer).is_running())
                       id(yambms${yambms_id}_script_cutoff_timer).stop();
+                    id(yambms${yambms_id}_var_cutoff_timer_armed) = false;
                   }
                   // Not Equalizing => Start cut-off timer
                   // If the conditions continue to be respected the charging process will stop in 60s (default value)
                   else if (!id(yambms${yambms_id}_script_cutoff_timer).is_running())
-                    id(yambms${yambms_id}_script_cutoff_timer).execute();
+                  {
+                    if (!id(yambms${yambms_id}_var_cutoff_timer_armed))
+                      id(yambms${yambms_id}_var_cutoff_timer_started) = ms_now;
+                    id(yambms${yambms_id}_var_cutoff_timer_armed) = true;
+                    id(yambms${yambms_id}_script_cutoff_timer).execute(id(yambms${yambms_id}_var_finish_attempt));
+                  }
+                  id(yambms${yambms_id}_var_finish_outcome) = id(yambms${yambms_id}_var_finish_paused) ?
+                    "Paused: brief discharge" : (id(yambms${yambms_id}_equalizing).state ?
+                    "Waiting: balancing active" : "Qualifying: cut-off confirmation");
                 }
 
               }
@@ -1062,20 +1178,182 @@ interval:
 # | scripts                              |
 # +--------------------------------------+
 script:
-  - id: yambms${yambms_id}_script_eoc_timer
-    then:
-      - delay: ${yambms_eoc_timer}min
-      - script.execute: yambms${yambms_id}_script_eoc
-  - id: yambms${yambms_id}_script_cutoff_timer
-    then:
-      - delay: ${yambms_cutoff_timer}s
-      - script.execute: yambms${yambms_id}_script_eoc
-  - id: yambms${yambms_id}_script_eoc
+  - id: yambms${yambms_id}_script_finish_check
     then:
       - lambda: |-
+          id(yambms${yambms_id}_var_finish_allowed) = false;
+          id(yambms${yambms_id}_var_finish_paused) = false;
+          id(yambms${yambms_id}_var_finish_reason) = "source guard";
+          id(yambms${yambms_id}_var_finish_source_current) = NAN;
+          // The deployment hook reads raw freshness/permissions, not cached HA states.
+          if (!id(yambms${yambms_id}_var_finish_source_guard)(true)) return;
+          id(yambms${yambms_id}_var_finish_reason) = "charging stopped, unavailable or overridden";
+          if (!id(yambms${yambms_id}_switch_charging).state ||
+              !id(yambms${yambms_id}_charging_allowed).has_state() ||
+              !id(yambms${yambms_id}_charging_allowed).state ||
+              !id(yambms${yambms_id}_bms_combined).has_state() ||
+              !std::isfinite(id(yambms${yambms_id}_bms_combined).state) ||
+              id(yambms${yambms_id}_bms_combined).state <= 0 ||
+              id(yambms${yambms_id}_var_force_float) ||
+              id(yambms${yambms_id}_var_bms_charging_logic)) return;
+          id(yambms${yambms_id}_var_finish_reason) = "invalid measurement or charge limit";
+          if (!id(yambms${yambms_id}_current).has_state() ||
+              !id(yambms${yambms_id}_max_cell_voltage).has_state() ||
+              !id(yambms${yambms_id}_battery_capacity).has_state() ||
+              !id(yambms${yambms_id}_total_voltage).has_state() ||
+              !id(yambms${yambms_id}_max_charge_current).has_state() ||
+              !id(yambms${yambms_id}_max_requested_charge_current).has_state() ||
+              !std::isfinite(id(yambms${yambms_id}_max_requested_charge_current).state) ||
+              id(yambms${yambms_id}_max_requested_charge_current).state <= 0) return;
+          const float current = id(yambms${yambms_id}_current).state;
+          const float high_cell = id(yambms${yambms_id}_max_cell_voltage).state;
+          const float capacity = id(yambms${yambms_id}_battery_capacity).state;
+          const float voltage = id(yambms${yambms_id}_total_voltage).state;
+          const float limit = id(yambms${yambms_id}_max_charge_current).state;
+          const float cv_min = id(yambms${yambms_id}_var_cell_min_charge_v);
+          const float cv_max = id(yambms${yambms_id}_var_cell_max_charge_v);
+          const float reductions[] = {
+            id(yambms${yambms_id}_var_auto_ccl), id(yambms${yambms_id}_var_auto_eoc),
+            id(yambms${yambms_id}_var_auto_temperature_ccl),
+            id(yambms${yambms_id}_var_auto_ccl_soft_landing),
+            id(yambms${yambms_id}_var_auto_soc_limit)
+          };
+          float reduction = 0;
+          for (float value : reductions) {
+            if (!std::isfinite(value)) return;
+            reduction = std::min(reduction, value);
+          }
+          if (!std::isfinite(current) || !std::isfinite(high_cell) ||
+              !std::isfinite(capacity) || !std::isfinite(voltage) ||
+              !std::isfinite(limit) || !std::isfinite(cv_min) || !std::isfinite(cv_max) ||
+              capacity <= 0 || voltage <= 0 ||
+              cv_min <= 0 || cv_max <= cv_min || round(limit + reduction) <= 0) return;
+          const float resistance = (cv_max - cv_min) / capacity / 0.05f;
+          id(yambms${yambms_id}_var_finish_reason) = "voltage/current qualification lost";
+          if (high_cell - resistance * std::max(current, 0.0f) < cv_min) return;
+          const float source_current = id(yambms${yambms_id}_var_finish_source_current);
+          const float reverse_a = std::max(0.0f, -std::min(current,
+              std::isfinite(source_current) ? source_current : current));
+          if (reverse_a > 0) {
+            id(yambms${yambms_id}_var_finish_reason) = "discharge without an active finish";
+            if (!id(yambms${yambms_id}_var_finish_active)) return;
+            id(yambms${yambms_id}_var_finish_reason) = "discharge exceeds 3 A";
+            if (reverse_a > 3.0f) return;
+            // Retain upstream's upper-region grey zone, without crediting discharge.
+            id(yambms${yambms_id}_var_finish_reason) = "voltage fell during discharge";
+            if (!std::isfinite(id(yambms${yambms_id}_bulk_voltage).state) ||
+                !std::isfinite(id(yambms${yambms_id}_cell_count).state) ||
+                id(yambms${yambms_id}_cell_count).state <= 0 ||
+                high_cell < id(yambms${yambms_id}_bulk_voltage).state /
+                  id(yambms${yambms_id}_cell_count).state - resistance) return;
+          }
+          const uint32_t now = millis();
+          if (id(yambms${yambms_id}_var_finish_active)) {
+            const uint32_t dt = now - id(yambms${yambms_id}_var_finish_check_ms);
+            const float previous = id(yambms${yambms_id}_var_finish_previous_reverse_a);
+            const bool pause_interval = reverse_a > 0 || previous > 0;
+            if (pause_interval) {
+              // Worst endpoint bounds the sampled interval; positive pulses do not refund the budget.
+              const uint64_t reverse_ms = uint64_t(id(yambms${yambms_id}_var_finish_reverse_ms)) + dt;
+              const double amp_ms = id(yambms${yambms_id}_var_finish_reverse_amp_ms) +
+                                    double(std::max(previous, reverse_a)) * dt;
+              id(yambms${yambms_id}_var_finish_reason) = "discharge exceeds 60 seconds";
+              if (reverse_ms > 60000) return;
+              id(yambms${yambms_id}_var_finish_reason) = "discharge budget exceeds 0.05 Ah";
+              if (amp_ms > 180000.0) return;
+              id(yambms${yambms_id}_var_finish_reverse_ms) = reverse_a > 0 ? reverse_ms : 0;
+              id(yambms${yambms_id}_var_finish_reverse_amp_ms) = amp_ms;
+              id(yambms${yambms_id}_var_finish_pause_ms) += dt;
+              if (id(yambms${yambms_id}_var_eoc_timer_armed))
+                id(yambms${yambms_id}_var_eoc_timer_started) += dt;
+              if (id(yambms${yambms_id}_var_cutoff_timer_armed))
+                id(yambms${yambms_id}_var_cutoff_timer_started) += dt;
+              id(yambms${yambms_id}_var_finish_paused) = true;
+            } else id(yambms${yambms_id}_var_finish_reverse_ms) = 0;
+          }
+          id(yambms${yambms_id}_var_finish_check_ms) = now;
+          id(yambms${yambms_id}_var_finish_previous_reverse_a) = reverse_a;
+          id(yambms${yambms_id}_var_finish_reason) = id(yambms${yambms_id}_var_finish_paused) ?
+            "brief discharge" : "qualified";
+          id(yambms${yambms_id}_var_finish_allowed) = true;
+  - id: yambms${yambms_id}_script_finish_cancel
+    then:
+      - lambda: |-
+          const bool was_active = id(yambms${yambms_id}_var_finish_active) ||
+                                  id(yambms${yambms_id}_var_charge_status) == "Cut-Off";
+          if (id(yambms${yambms_id}_var_finish_active)) {
+            id(yambms${yambms_id}_var_finish_outcome) = "Cancelled: " + id(yambms${yambms_id}_var_finish_reason);
+            ESP_LOGI("yambms_finish", "Cancelled attempt %d", id(yambms${yambms_id}_var_finish_attempt));
+          }
+          id(yambms${yambms_id}_var_finish_active) = false;
+          id(yambms${yambms_id}_var_finish_paused) = false;
+          id(yambms${yambms_id}_var_finish_previous_reverse_a) = 0;
+          id(yambms${yambms_id}_var_eoc_timer_armed) = false;
+          id(yambms${yambms_id}_var_cutoff_timer_armed) = false;
+          id(yambms${yambms_id}_script_eoc_timer).stop();
+          id(yambms${yambms_id}_script_cutoff_timer).stop();
+          id(yambms${yambms_id}_var_ms_cutoff) = millis();
+          if (was_active) id(yambms${yambms_id}_var_ms_bulk) = millis();
+          if (id(yambms${yambms_id}_var_charge_status) == "Cut-Off")
+            id(yambms${yambms_id}_var_charge_status) = "Bulk";
+          // Do not erase the timestamp of an earlier genuinely completed charge.
+  - id: yambms${yambms_id}_script_eoc_timer
+    parameters:
+      attempt: int
+    then:
+      - delay: !lambda |-
+          const uint32_t elapsed = millis() - id(yambms${yambms_id}_var_eoc_timer_started);
+          const uint32_t duration = ${yambms_eoc_timer}UL * 60000UL;
+          return elapsed < duration ? duration - elapsed : 1000;
+      - script.execute:
+          id: yambms${yambms_id}_script_eoc
+          attempt: !lambda return attempt;
+          backstop: true
+  - id: yambms${yambms_id}_script_cutoff_timer
+    parameters:
+      attempt: int
+    then:
+      - delay: !lambda |-
+          const uint32_t elapsed = millis() - id(yambms${yambms_id}_var_cutoff_timer_started);
+          const uint32_t duration = ${yambms_cutoff_timer}UL * 1000UL;
+          return elapsed < duration ? duration - elapsed : 1000;
+      - script.execute:
+          id: yambms${yambms_id}_script_eoc
+          attempt: !lambda return attempt;
+          backstop: false
+  - id: yambms${yambms_id}_script_eoc
+    parameters:
+      attempt: int
+      backstop: bool
+    then:
+      - lambda: |-
+          if (!id(yambms${yambms_id}_var_finish_active) ||
+              attempt != id(yambms${yambms_id}_var_finish_attempt)) return;
+          const bool armed = backstop ? id(yambms${yambms_id}_var_eoc_timer_armed) :
+                                       id(yambms${yambms_id}_var_cutoff_timer_armed);
+          const uint32_t duration = backstop ? ${yambms_eoc_timer}UL * 60000UL : ${yambms_cutoff_timer}UL * 1000UL;
+          if (!armed) return;
+          id(yambms${yambms_id}_script_finish_check).execute();
+          if (!id(yambms${yambms_id}_var_finish_allowed) ||
+              !id(yambms${yambms_id}_var_initialized) ||
+              id(yambms${yambms_id}_var_charge_status) != "Cut-Off") {
+            id(yambms${yambms_id}_script_finish_cancel).execute();
+            return;
+          }
+          const uint32_t started = backstop ? id(yambms${yambms_id}_var_eoc_timer_started) :
+                                             id(yambms${yambms_id}_var_cutoff_timer_started);
+          if (id(yambms${yambms_id}_var_finish_paused) || uint32_t(millis() - started) < duration) return;
+          if ((backstop && !id(yambms${yambms_id}_switch_eoc_timer).state) ||
+              (!backstop && id(yambms${yambms_id}_equalizing).state) ||
+              !id(yambms${yambms_id}_var_finish_source_guard)(backstop)) return;
           // Stop timer
           if (id(yambms${yambms_id}_script_eoc_timer).is_running()) id(yambms${yambms_id}_script_eoc_timer).stop();
           if (id(yambms${yambms_id}_script_cutoff_timer).is_running()) id(yambms${yambms_id}_script_cutoff_timer).stop();
+          id(yambms${yambms_id}_var_finish_active) = false;
+          id(yambms${yambms_id}_var_eoc_timer_armed) = false;
+          id(yambms${yambms_id}_var_cutoff_timer_armed) = false;
+          id(yambms${yambms_id}_var_finish_outcome) = backstop ? "Completed: EOC backstop" : "Completed: cut-off confirmation";
+          ESP_LOGI("yambms_finish", "%s, attempt %d", id(yambms${yambms_id}_var_finish_outcome).c_str(), attempt);
           // EOC script
           if (id(yambms${yambms_id}_switch_float).state) id(yambms${yambms_id}_var_charge_status) = "Float";
           else id(yambms${yambms_id}_var_charge_status) = "EOC";

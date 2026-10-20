@@ -1,0 +1,12 @@
+# Coherent packet admission only; retain all existing charge policy and controls.
+packages:
+  qualified_operating: !include yambms-auto-cvl-persistent.yaml
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - balance status qualified - cut-off 600s trial - persistent Auto CVL - paired measurements v1"};
+  - platform: template
+    name: Measurement Pair Admission
+    device_id: qualification
+    update_interval: 1s
+    lambda: return {id(seplos_v3).diagnostic_metadata()};

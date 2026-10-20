@@ -37,8 +37,10 @@ void fixture() {
   yambms1_auto_float_interval.state = 1;
   yambms1_script_eoc_timer.delay_ms = 30 * 60000;
   yambms1_script_cutoff_timer.delay_ms = 60 * 1000;
-  yambms1_script_eoc_timer.callback = run_eoc;
-  yambms1_script_cutoff_timer.callback = run_eoc;
+  yambms1_script_eoc_timer.callback = [](int attempt, bool) { run_eoc(attempt, true); };
+  yambms1_script_cutoff_timer.callback = [](int attempt, bool) { run_eoc(attempt, false); };
+  yambms1_script_finish_check.callback = [](int, bool) { run_finish_check(); };
+  yambms1_script_finish_cancel.callback = [](int, bool) { run_finish_cancel(); };
 }
 
 void tick() {

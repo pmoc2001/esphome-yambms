@@ -1,0 +1,41 @@
+# Offline candidate. No upload without the supervised installation gate.
+packages:
+  operating_profile: !include yambms-charge-ceiling-50a.yaml
+
+esphome:
+  build_path: build/finish-diagnostics-v3
+  compile_process_limit: 2
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"CANDIDATE YAMBMS - Seplos SP18B FW1.5 - 50A charge / 100A discharge - transaction reader v3 - bounded finish pause v3 diagnostic clock fix"};
+
+sensor:
+  - platform: template
+    name: Finishing Qualified Time
+    device_id: qualification
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if (!id(yambms1_var_cutoff_timer_armed)) return 0;
+      const uint32_t elapsed = uint32_t(id(yambms1_var_finish_check_ms) - id(yambms1_var_cutoff_timer_started));
+      // The timer can be armed a tick after the last checked time. Do not
+      // interpret that small negative interval as a completed confirmation.
+      // A real millis() rollover still produces a small positive interval.
+      if (elapsed > 0x7FFFFFFFU) return 0;
+      return std::min(elapsed, uint32_t(${yambms_cutoff_timer} * 1000)) / 1000.0f;
+  - platform: template
+    name: Finishing Paused Time
+    device_id: qualification
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(yambms1_var_finish_pause_ms) / 1000.0f;
+  - platform: template
+    name: Finishing Discharge Budget Used
+    device_id: qualification
+    unit_of_measurement: Ah
+    accuracy_decimals: 4
+    update_interval: 1s
+    lambda: return id(yambms1_var_finish_reverse_amp_ms) / 3600000.0;

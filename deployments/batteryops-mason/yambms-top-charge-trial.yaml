@@ -1,0 +1,21 @@
+# Supervised SmartShunt synchronisation trial; all operating guards inherited.
+substitutions:
+  yambms_cutoff_timer: '600'
+
+packages:
+  qualified_operating: !include yambms-balancing-status-fix.yaml
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - balance status qualified - cut-off 600s trial"};
+
+sensor:
+  - platform: template
+    name: Cut-Off Confirmation Time
+    id: qualification_cutoff_seconds
+    device_id: qualification
+    unit_of_measurement: s
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: return ${yambms_cutoff_timer};

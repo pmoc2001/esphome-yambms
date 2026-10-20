@@ -48,6 +48,7 @@ class SeplosParser : public uart::UARTDevice, public Component {
   void set_bms_count(int bms_count);
   void set_address_base(int address_base) { address_base_ = address_base; }
   void set_replay_only(bool replay_only) { replay_only_ = replay_only; }
+  void set_transaction_tracking(bool enabled) { transaction_tracking_ = enabled; }
   void set_status_profile(const std::string &profile) {
     sp18b_fw15_balancing_profile_ = profile == "v3_sp18b_fw15_balancing";
     sp18b_fw15_profile_ = profile == "v3_sp18b_fw15" || sp18b_fw15_balancing_profile_;
@@ -72,41 +73,52 @@ class SeplosParser : public uart::UARTDevice, public Component {
   uint32_t crc_failures() const { return crc_failures_; }
   uint32_t unmatched_addresses() const { return unmatched_addresses_; }
   std::array<float, 16> cell_values() const {
-    return {value_(cell_1_), value_(cell_2_), value_(cell_3_), value_(cell_4_),
-      value_(cell_5_), value_(cell_6_), value_(cell_7_), value_(cell_8_),
-      value_(cell_9_), value_(cell_10_), value_(cell_11_), value_(cell_12_),
-      value_(cell_13_), value_(cell_14_), value_(cell_15_), value_(cell_16_)};
+    return measurements_.cells;
   }
   std::array<float, 6> temperature_values() const {
-    return {value_(cell_temp_1_), value_(cell_temp_2_), value_(cell_temp_3_),
-      value_(cell_temp_4_), value_(case_temp_), value_(power_temp_)};
+    return measurements_.temperatures;
   }
   bool metadata_ready() const {
     if (!(pack_fresh() && cells_fresh() && pic_fresh())) return false;
-    // Plausibility checks are admission checks, not battery charge thresholds.
+    if (!metadata_fields_valid_() || !published_fields_finite_()) return false;
+    // The BMS samples these register blocks separately. Their extrema need not
+    // agree during a current step; guarded_limits_ checks BOTH sets immediately.
+    if (transaction_tracking_) return true;
+    if (!coherent_seen_ || uint32_t(millis() - coherent_ms_) >= 30000) return false;
+    return !pair_pending_ || uint32_t(millis() - pair_pending_ms_) < PAIR_WINDOW_MS;
+  }
+  std::string diagnostic_metadata() const {
+    if (transaction_tracking_) {
+      if (!(pack_fresh() && cells_fresh() && pic_fresh())) return "blocked: identified telemetry missing or stale";
+      if (!metadata_fields_valid_()) return "blocked: invalid identified telemetry";
+      if (!published_fields_finite_()) return "blocked: published metadata incomplete";
+      return "ready: request-identified telemetry; independently sampled blocks";
+    }
+    if (!metadata_ready()) return "blocked: incomplete, invalid, stale or inconsistent measurements";
+    return pair_pending_ ? "ready: awaiting paired measurements (maximum 1000ms)" :
+                           "ready: coherent measurement pair";
+  }
+  std::string diagnostic_transactions() const {
+    return "requests=" + std::to_string(observed_requests_) +
+      "; telemetry=" + std::to_string(valid_frames_) +
+      "; ignored=" + std::to_string(ignored_responses_) +
+      "; unassociated=" + std::to_string(unassociated_responses_) +
+      "; exceptions=" + std::to_string(exception_responses_);
+  }
+  bool metadata_fields_valid_() const {
     auto range = [](float v, float lo, float hi) {
       return std::isfinite(v) && v >= lo && v <= hi;
     };
-    if (!range(value_(pack_voltage_), 24, 72) ||
-        !range(value_(current_), -2000, 2000) ||
-        !range(value_(soc_), 0, 100) || !range(value_(soh_), 0, 100) ||
-        !range(value_(total_capacity_), 1, 2000) ||
-        !range(value_(remaining_capacity_), 0, value_(total_capacity_) + 0.01f) ||
-        !range(value_(cycle_count_), 0, 65535) ||
+    const auto &p = measurements_.pack;
+    if (!range(p[0], 24, 72) || !range(p[1], -2000, 2000) ||
+        !range(p[5], 0, 100) || !range(p[6], 0, 100) ||
+        !range(p[3], 1, 2000) || !range(p[2], 0, p[3] + 0.01f) ||
+        !range(p[7], 0, 65535) ||
         !range(ccl_, 0, 2000) || !range(dcl_, 0, 2000)) return false;
-    float sum = 0;
-    auto cells = cell_values();
-    for (float v : cells) {
-      if (!range(v, 1.5f, 4.5f)) return false;
-      sum += v;
-    }
+    for (float v : cell_values()) if (!range(v, 1.5f, 4.5f)) return false;
     for (float t : temperature_values()) if (!range(t, -60, 120)) return false;
-    if (!range(value_(min_cell_temp_), -60, 120) ||
-        !range(value_(max_cell_temp_), -60, 120) ||
-        value_(min_cell_temp_) > value_(max_cell_temp_)) return false;
-    return std::fabs(sum - value_(pack_voltage_)) <= 0.5f &&
-      std::fabs(*std::min_element(cells.begin(), cells.end()) - value_(min_cell_voltage_)) <= 0.05f &&
-      std::fabs(*std::max_element(cells.begin(), cells.end()) - value_(max_cell_voltage_)) <= 0.05f;
+    return range(p[10], 1.5f, 4.5f) && range(p[11], 1.5f, 4.5f) && p[11] <= p[10] &&
+      range(p[12], -60, 120) && range(p[13], -60, 120) && p[13] <= p[12];
   }
   float min_cell_number() const {
     if (!metadata_ready()) return NAN;
@@ -145,10 +157,10 @@ class SeplosParser : public uart::UARTDevice, public Component {
   }
   bool adapter_charge_allowed() const { return safety_preview().charge_limit > 0; }
   SafetyPreview supervised_trial_limits() const {
-    return supervised_trial(safety_preview(), metadata_ready(), cell_values(), temperature_values());
+    return guarded_limits_(true);
   }
   SafetyPreview operating_limits() const {
-    return supervised_trial(safety_preview(), metadata_ready(), cell_values(), temperature_values(), false);
+    return guarded_limits_(false);
   }
   bool adapter_discharge_allowed() const { return safety_preview().discharge_limit > 0; }
   bool adapter_equalizing() const {
@@ -176,10 +188,48 @@ class SeplosParser : public uart::UARTDevice, public Component {
   }
 
 private:
+  // Decode entire packets before publishing sensor callbacks. Only cross-packet
+  // agreement gets a bounded wait; new limits, faults and unsafe extrema do not.
+  struct Measurements {
+    std::array<float, 17> pack{};
+    std::array<float, 16> cells{};
+    std::array<float, 6> temperatures{};
+  } measurements_;
+  static constexpr uint32_t PAIR_WINDOW_MS = 1000;
+  bool coherent_seen_{false}, pair_pending_{false};
+  uint32_t coherent_ms_{0}, pair_pending_ms_{0};
+  void update_measurement_pair_();
+  bool published_fields_finite_() const;
+  SafetyPreview guarded_limits_(bool commissioning_caps) const {
+    auto cells = cell_values();
+    auto temperatures = temperature_values();
+    // Check extremes from BOTH packets, even while the counterpart is pending.
+    const auto cell_extrema = std::minmax_element(cells.begin(), cells.end());
+    const float minimum_cell = std::min(*cell_extrema.first, measurements_.pack[11]);
+    const float maximum_cell = std::max(*cell_extrema.second, measurements_.pack[10]);
+    const auto temp_extrema = std::minmax_element(temperatures.begin(), temperatures.end());
+    const float minimum_temp = std::min(*temp_extrema.first, measurements_.pack[13]);
+    const float maximum_temp = std::max(*temp_extrema.second, measurements_.pack[12]);
+    cells[0] = minimum_cell;
+    cells[1] = maximum_cell;
+    temperatures[0] = minimum_temp;
+    temperatures[1] = maximum_temp;
+    return supervised_trial(safety_preview(), metadata_ready(), cells, temperatures, commissioning_caps);
+  }
   static float value_(const std::vector<sensor::Sensor *> &values) {
     return values.empty() || values[0] == nullptr ? NAN : values[0]->state;
   }
   void accept_byte_(uint8_t byte);
+  void accept_transaction_byte_(uint8_t byte);
+  bool transaction_tracking_{false};
+  struct Transaction {
+    bool pending{false};
+    uint8_t address{0}, function{0};
+    uint16_t reg{0}, count{0};
+    uint32_t started_ms{0};
+  } transaction_;
+  uint32_t last_byte_ms_{0};
+  uint32_t observed_requests_{0}, ignored_responses_{0}, unassociated_responses_{0}, exception_responses_{0};
   bool replay_only_{false};
   bool sp18b_fw15_profile_{false};
   bool sp18b_fw15_balancing_profile_{false};

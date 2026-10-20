@@ -1,0 +1,16 @@
+# Remember operator Auto CVL intent; retain the qualified charging policy.
+packages:
+  qualified_operating: !include yambms-top-charge-trial.yaml
+
+switch:
+  - id: !extend yambms1_switch_auto_cvl
+    restore_mode: RESTORE_DEFAULT_ON
+    on_state:
+      - lambda: |-
+          if (!esphome::global_preferences->sync()) {
+            ESP_LOGE("auto_cvl", "Could not save Auto CVL setting");
+          }
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 35A charge / 100A discharge - balance status qualified - cut-off 600s trial - persistent Auto CVL"};

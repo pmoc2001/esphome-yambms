@@ -1,6 +1,7 @@
 esphome::sensor::Sensor raw_voltage, raw_current, raw_ccl, raw_dcl;
 std::vector<uint8_t> pic(18, 0);
 uint16_t input_ccl = 180, input_dcl = 180;
+float input_current = 20, input_voltage = 54;
 #ifdef OPERATING_MODE
 constexpr float normal_charge = 35, normal_discharge = 100;
 #else
@@ -12,6 +13,15 @@ float trial_temperature = 21, trial_min_cell = 3.36f, trial_max_cell = 3.38f;
 #endif
 
 void inject(uint8_t function, std::vector<uint8_t> data, bool corrupt = false) {
+#ifdef FINISH_SESSION_MODE
+  const uint16_t reg = function == 1 ? 0x1200 : data.size() == 34 ? 0x1000 : 0x1100;
+  const uint16_t count = function == 1 ? 144 : data.size() / 2;
+  std::deque<uint8_t> request{0, function, uint8_t(reg >> 8), uint8_t(reg), uint8_t(count >> 8), uint8_t(count)};
+  const uint16_t request_crc = seplos_v3.calculate_modbus_crc(request, request.size());
+  request.push_back(request_crc & 255); request.push_back(request_crc >> 8);
+  seplos_v3.incoming.insert(seplos_v3.incoming.end(), request.begin(), request.end());
+  while (seplos_v3.available()) seplos_v3.loop();
+#endif
   std::deque<uint8_t> frame{0, function, uint8_t(data.size())};
   frame.insert(frame.end(), data.begin(), data.end());
   uint16_t crc = 0xffff;
@@ -25,7 +35,8 @@ void inject(uint8_t function, std::vector<uint8_t> data, bool corrupt = false) {
 }
 void pack() {
   std::vector<uint16_t> words(17);
-  words[0] = 5400; words[1] = 2000;
+  words[0] = std::lround(input_voltage * 100);
+  words[1] = int16_t(std::lround(input_current * 100));
   words[15] = input_dcl; words[16] = input_ccl;
 #ifdef HANDOVER_MODE
   words[2] = 25200; words[3] = 28000; words[5] = 900; words[6] = 1000; words[7] = 35;
@@ -36,6 +47,10 @@ void pack() {
   std::vector<uint8_t> data;
   for (auto word : words) { data.push_back(word >> 8); data.push_back(word & 255); }
   inject(4, data);
+#ifdef FINISH_SESSION_MODE
+  bms1_current.raw_state = raw_current.raw_state;
+  bms1_max_cell_voltage.raw_state = trial_metadata[6].raw_state;
+#endif
 }
 void cells() {
   std::vector<uint8_t> data(52);
@@ -52,7 +67,12 @@ void cells() {
 void status(bool corrupt = false) { inject(1, pic, corrupt); }
 void fresh() { pack(); cells(); status(); }
 void fixture() {
+  yambms1_script_finish_check.callback = [](int, bool) { run_finish_check(); };
+  yambms1_script_finish_cancel.callback = [](int, bool) { run_finish_cancel(); };
   seplos_v3.set_bms_count(1); seplos_v3.set_address_base(0);
+#ifdef FINISH_SESSION_MODE
+  seplos_v3.set_transaction_tracking(true);
+#endif
   raw_voltage.name = "bms0 pack_voltage"; raw_current.name = "bms0 current";
   raw_ccl.name = "bms0 maxchgcurt"; raw_dcl.name = "bms0 maxdiscurt";
   for (auto sensor : {&raw_voltage, &raw_current, &raw_ccl, &raw_dcl}) seplos_v3.register_sensor(sensor);

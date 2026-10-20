@@ -57,9 +57,14 @@ int main() {
   word(cells, 24, 65535); feed(p, 4, cells); assert(!p.metadata_ready());
   word(cells, 24, 2952); feed(p, 4, cells); assert(p.metadata_ready());
   word(pack, 5, 1001); feed(p, 4, pack); assert(!p.metadata_ready());
-  word(pack, 5, 350); word(pack, 0, 6000); feed(p, 4, pack); assert(!p.metadata_ready());
+  word(pack, 5, 350); feed(p, 4, pack); assert(p.metadata_ready());
+  word(pack, 0, 6000); feed(p, 4, pack);
+  assert(p.metadata_ready()); // Only cross-packet disagreement gets a bounded wait.
+  esphome::test_millis += 1000;
+  assert(!p.metadata_ready());
   word(pack, 0, 5226); word(pack, 15, 0); word(pack, 16, 0);
-  feed(p, 4, pack); assert(p.metadata_ready()); // Zero is legitimate, not missing.
+  feed(p, 4, pack); assert(!p.metadata_ready()); // The counterpart is now too old to pair.
+  feed(p, 4, cells); assert(p.metadata_ready()); // Zero allowances are legitimate, not missing.
   sensors[12].state = NAN; assert(!p.metadata_ready());
   feed(p, 4, cells); assert(p.metadata_ready());
   esphome::test_millis = 30000;

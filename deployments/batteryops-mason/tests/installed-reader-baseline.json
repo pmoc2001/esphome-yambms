@@ -1,0 +1,10 @@
+{
+  "description": "Source hashes of the installed 9 October transaction reader, retained unchanged in the 19 October finishing release.",
+  "component_sha256": {
+    "seplos_parser.cpp": "b7f52b4c6d5e94c32ca8b09ec05bb4e93c9c42b8b96b58262d428d9c2abc28dd",
+    "seplos_parser.h": "4b1d0159b92d2b743bbd52cfe4e45207bd9fbdd2694c8c226b442c534b5d3054",
+    "pic_status.h": "3eec1fd022008d38e50d29fbf37e2961c5bbf63c11c62a063c3f52fddc1d7d92",
+    "supervised_trial.h": "3939731bad3e43b5baa3385e2b316a48f3370efaf1d7e04920883e183aeb5566",
+    "__init__.py": "96651f81dffddd3ac756a53b49211235a77b96688bbc7d0ad2d324d034d9a944"
+  }
+}

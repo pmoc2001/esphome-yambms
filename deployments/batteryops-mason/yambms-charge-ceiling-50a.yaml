@@ -1,0 +1,37 @@
+# One operating-policy change: 50 A maximum, retaining the installed finish repair.
+packages:
+  installed_finish_repair: !include yambms-finish-session-fix.yaml
+
+esphome:
+  build_path: build/charge-ceiling-50a
+  compile_process_limit: 2
+
+substitutions:
+  yambms_max_requested_charge_current: '50'
+
+number:
+  - id: !extend yambms1_max_requested_charge_current
+    initial_value: 50
+    max_value: 50
+    restore_value: false
+
+sensor:
+  - id: !extend yambms1_requested_charge_current
+    filters: !remove
+  - id: !extend yambms1_requested_charge_current
+    filters:
+      - or:
+          - throttle: 10s
+          - delta: 1
+      - lambda: return esphome::seplos_parser::trial_cap(x, std::min(50.0f, id(seplos_v3).operating_limits().charge_limit));
+
+text_sensor:
+  - id: !extend qualification_firmware_role
+    lambda: return {"OPERATING YAMBMS - Seplos SP18B FW1.5 - 50A charge / 100A discharge - transaction reader v3 - finish session fix v1"};
+  - id: !extend qualification_current_guard
+    name: Operating Limits
+    lambda: |-
+      const auto limits = id(seplos_v3).operating_limits();
+      return {limits.reason + "; protected source CCL=" + std::to_string(limits.charge_limit) +
+        "; protected source DCL=" + std::to_string(limits.discharge_limit) +
+        "; output ceilings CCL=50A; DCL=100A"};

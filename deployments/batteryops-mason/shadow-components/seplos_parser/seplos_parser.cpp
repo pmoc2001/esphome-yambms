@@ -111,6 +111,9 @@ void SeplosParser::feed_replay_frame(const std::vector<uint8_t> &frame) {
 void SeplosParser::reset_replay() {
   if (!replay_only_) return;
   pack_seen_ = cells_seen_ = pic_seen_ = false;
+  coherent_seen_ = pair_pending_ = false;
+  measurements_ = {};
+  transaction_ = {};
   raw_pic_.clear();
   pic_status_ = {};
   ccl_ = dcl_ = 0;
@@ -119,6 +122,10 @@ void SeplosParser::reset_replay() {
 
 void SeplosParser::accept_byte_(uint8_t byte) {
     received_bytes_++;
+    if (transaction_tracking_) {
+      accept_transaction_byte_(byte);
+      return;
+    }
     buffer.push_back(byte);
 
     if (buffer.size() > 100) {
@@ -146,6 +153,85 @@ void SeplosParser::accept_byte_(uint8_t byte) {
         }
       }
     }
+}
+
+void SeplosParser::accept_transaction_byte_(uint8_t byte) {
+  const uint32_t now = millis();
+  // This is a stalled-fragment recovery timeout, not an RTU wire-gap detector.
+  if (uint32_t(now - last_byte_ms_) > 100) buffer.clear();
+  last_byte_ms_ = now;
+  if (transaction_.pending && uint32_t(now - transaction_.started_ms) >= 1500)
+    transaction_.pending = false;
+  buffer.push_back(byte);
+
+  while (buffer.size() >= 3) {
+    if (buffer[0] > 247 || (buffer[1] != 1 && buffer[1] != 4 && buffer[1] != 0x81 && buffer[1] != 0x84)) {
+      buffer.pop_front();
+      continue;
+    }
+    const bool exception = (buffer[1] & 0x80) != 0;
+    bool request_candidate = false;
+    // All reads made by this installation use the Seplos 0x1000..0x17ff map.
+    // Requests include a register address; responses do NOT. CRC-valid length
+    // alone therefore cannot identify a telemetry block.
+    if (!exception && buffer[2] >= 0x10 && buffer[2] <= 0x17) {
+      if (buffer.size() < 8) return;
+      const uint16_t count = uint16_t(buffer[4] << 8 | buffer[5]);
+      request_candidate = count > 0 && count <= (buffer[1] == 4 ? 125 : 2000) && validate_crc(8);
+    }
+    const bool addressed = transaction_.pending && buffer[0] == transaction_.address &&
+      (buffer[1] & 0x7f) == transaction_.function;
+    const unsigned expected = transaction_.function == 4 ? transaction_.count * 2 : (transaction_.count + 7) / 8;
+    const bool response_candidate = !exception && addressed && buffer[2] == expected;
+    auto accept_request = [&]() {
+      ++observed_requests_;
+      transaction_ = {true, buffer[0], buffer[1], uint16_t(buffer[2] << 8 | buffer[3]),
+                      uint16_t(buffer[4] << 8 | buffer[5]), now};
+      buffer.erase(buffer.begin(), buffer.begin() + 8);
+    };
+    // A PIC response's first eight bytes can themselves have a valid request
+    // CRC. Validate the whole expected response before choosing that prefix.
+    if (request_candidate && !response_candidate) {
+      accept_request();
+      continue;
+    }
+    if (!exception && (buffer[2] == 0 || buffer[2] > 250 || (buffer[1] == 4 && buffer[2] % 2))) {
+      buffer.pop_front();
+      continue;
+    }
+    const size_t length = exception ? 5 : size_t(buffer[2]) + 5;
+    if (buffer.size() < length) return;
+    if (!validate_crc(length)) {
+      if (request_candidate) {
+        // A repeated coil request has the same prefix as the expected reply.
+        // Once the full reply candidate fails CRC, retain it as a retry instead.
+        accept_request();
+        continue;
+      }
+      ++crc_failures_;
+      transaction_.pending = false;
+      // Never interpret payload inside a damaged frame as a fresh transaction.
+      buffer.erase(buffer.begin(), buffer.begin() + length);
+      continue;
+    }
+    if (addressed) {
+      const auto request = transaction_;
+      transaction_.pending = false;
+      const unsigned expected = request.function == 4 ? request.count * 2 : (request.count + 7) / 8;
+      const bool telemetry =
+        (request.function == 4 && request.reg == 0x1000 && (request.count == 17 || request.count == 18)) ||
+        (request.function == 4 && request.reg == 0x1100 && request.count == 26) ||
+        (request.function == 1 && request.reg == 0x1200 && request.count == 144);
+      if (!exception && expected == buffer[2] && telemetry) {
+        ++valid_frames_;
+        process_packet(length);
+      } else if (exception) ++exception_responses_;
+      else ++ignored_responses_;
+    } else ++unassociated_responses_;
+    // Consume unrelated frames whole, including >100-byte identity replies.
+    // Their payload may contain bytes resembling complete telemetry frames.
+    buffer.erase(buffer.begin(), buffer.begin() + length);
+  }
 }
 
 bool SeplosParser::is_valid_header() {
@@ -198,8 +284,21 @@ void SeplosParser::process_packet(size_t length) {
   if (buffer[1] == 0x04 && (buffer[2] == 0x22 || buffer[2] == 0x24)) {
     pack_seen_ = true;
     pack_ms_ = millis();
+    if (bms_index == 0) {
+      std::array<float, 17> pack;
+      for (unsigned i = 0; i < pack.size(); ++i) pack[i] = uint16_t(buffer[3 + i * 2] << 8 | buffer[4 + i * 2]);
+      pack[0] /= 100.0f;
+      pack[1] = int16_t(uint16_t(pack[1])) / 100.0f;
+      pack[2] /= 100.0f; pack[3] /= 100.0f;
+      pack[5] /= 10.0f; pack[6] /= 10.0f;
+      pack[10] /= 1000.0f; pack[11] /= 1000.0f;
+      pack[12] = pack[12] / 10.0f - 273.15f;
+      pack[13] = pack[13] / 10.0f - 273.15f;
+      measurements_.pack = pack;
+    }
     dcl_ = uint16_t(buffer[33] << 8 | buffer[34]);
     ccl_ = uint16_t(buffer[35] << 8 | buffer[36]);
+    update_measurement_pair_();
     //ESP_LOGI("DEBUG", "buffer[3]: 0x%02X, buffer[4]: 0x%02X", buffer[3], buffer[4]);
     std::vector<std::pair<sensor::Sensor*, float>> updates;
 
@@ -233,6 +332,17 @@ void SeplosParser::process_packet(size_t length) {
   if (buffer[2] == 0x34) {
     cells_seen_ = true;
     cells_ms_ = millis();
+    if (bms_index == 0) {
+      auto next = measurements_;
+      for (unsigned i = 0; i < 16; ++i)
+        next.cells[i] = uint16_t(buffer[3 + i * 2] << 8 | buffer[4 + i * 2]) / 1000.0f;
+      for (unsigned i = 0; i < 6; ++i) {
+        const unsigned offset = i < 4 ? 35 + i * 2 : 51 + (i - 4) * 2;
+        next.temperatures[i] = uint16_t(buffer[offset] << 8 | buffer[offset + 1]) / 10.0f - 273.15f;
+      }
+      measurements_ = next;
+    }
+    update_measurement_pair_();
     std::vector<std::pair<sensor::Sensor*, float>> updates;
 
     updates.emplace_back(cell_1_[bms_index], (buffer[3] << 8 | buffer[4]) / 1000.0f);
@@ -400,6 +510,41 @@ void SeplosParser::process_packet(size_t length) {
       if (active_protections_[bms_index]) active_protections_[bms_index]->publish_state(join_list(active_protections, ", "));
     }
   }
+}
+
+void SeplosParser::update_measurement_pair_() {
+  if (!(pack_fresh() && cells_fresh()) || !metadata_fields_valid_()) {
+    coherent_seen_ = pair_pending_ = false;
+    return;
+  }
+  auto cells = cell_values();
+  float sum = 0;
+  for (float v : cells) sum += v;
+  const auto &pack = measurements_.pack;
+  const uint32_t skew = std::min(uint32_t(pack_ms_ - cells_ms_), uint32_t(cells_ms_ - pack_ms_));
+  const bool coherent = skew < PAIR_WINDOW_MS && std::fabs(sum - pack[0]) <= 0.5f &&
+    std::fabs(*std::min_element(cells.begin(), cells.end()) - pack[11]) <= 0.05f &&
+    std::fabs(*std::max_element(cells.begin(), cells.end()) - pack[10]) <= 0.05f;
+  if (coherent) {
+    coherent_seen_ = true;
+    coherent_ms_ = millis();
+    pair_pending_ = false;
+  } else if (!pair_pending_) {
+    pair_pending_ = true;
+    pair_pending_ms_ = millis();
+  }
+}
+
+bool SeplosParser::published_fields_finite_() const {
+  for (const auto *values : {&pack_voltage_, &current_, &remaining_capacity_, &total_capacity_,
+      &soc_, &soh_, &cycle_count_, &min_cell_voltage_, &max_cell_voltage_,
+      &min_cell_temp_, &max_cell_temp_, &cell_1_, &cell_2_, &cell_3_, &cell_4_,
+      &cell_5_, &cell_6_, &cell_7_, &cell_8_, &cell_9_, &cell_10_, &cell_11_,
+      &cell_12_, &cell_13_, &cell_14_, &cell_15_, &cell_16_, &cell_temp_1_,
+      &cell_temp_2_, &cell_temp_3_, &cell_temp_4_, &case_temp_, &power_temp_}) {
+    if (!std::isfinite(value_(*values))) return false;
+  }
+  return true;
 }
 
 const uint16_t crc_table[256] = {

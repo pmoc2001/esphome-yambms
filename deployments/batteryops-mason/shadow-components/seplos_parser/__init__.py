@@ -29,6 +29,7 @@ CONFIG_SCHEMA = (
         cv.Optional(CONF_BMS_COUNT, default=1): cv.int_,
         cv.Optional(CONF_ADDRESS_BASE, default=1): cv.int_range(min=0, max=1),
         cv.Optional("replay_only", default=False): cv.boolean,
+        cv.Optional("transaction_tracking", default=False): cv.boolean,
         cv.Optional("status_profile", default="strict"): cv.one_of(
             "strict", "v3_sp18b_fw15", "v3_sp18b_fw15_balancing"
         ),
@@ -46,4 +47,5 @@ async def to_code(config):
     cg.add(var.set_bms_count(config[CONF_BMS_COUNT]))
     cg.add(var.set_address_base(config[CONF_ADDRESS_BASE]))
     cg.add(var.set_replay_only(config["replay_only"]))
+    cg.add(var.set_transaction_tracking(config["transaction_tracking"]))
     cg.add(var.set_status_profile(config["status_profile"]))

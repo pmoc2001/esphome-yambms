@@ -56,7 +56,7 @@ packages:
       shunt_id: '1' # must be a number
       shunt_name: 'Shunt 1'
       shunt_mac_address: '60:A4:23:91:8F:55' # Your MAC address
-      shunt_encryption_key: '0df4d0395b7d1a876c0c33ecb9e70dcd' # Your encryption key
+      shunt_encryption_key: !secret shunt1_encryption_key # Set privately for your device
       shunt_status_led_id: 'esp_light' # LED used to show status; default = esp_light, comment out to disable
       # Optional: BMS IDs connected to this shunt
       # If provided, the shunt will only be used when all listed BMS are online
